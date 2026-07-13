@@ -26,20 +26,23 @@ function setConsoleSortOverride(consoleId, value) {
 // à un rechargement de page et à un re-render (une console repliée le reste
 // après une mutation ailleurs dans l'app).
 let collapsedConsoles = new Set(JSON.parse(localStorage.getItem('game_db_collapsed_consoles') || '[]'));
-async function toggleConsoleCollapsed(consoleId) {
-    if (collapsedConsoles.has(consoleId)) {
-        collapsedConsoles.delete(consoleId);
-    } else {
+function toggleConsoleCollapsed(consoleId) {
+    const isNowCollapsed = !collapsedConsoles.has(consoleId);
+    if (isNowCollapsed) {
         collapsedConsoles.add(consoleId);
+    } else {
+        collapsedConsoles.delete(consoleId);
     }
     localStorage.setItem('game_db_collapsed_consoles', JSON.stringify([...collapsedConsoles]));
 
-    // render() reconstruit tout #main-container (et le dashboard au-dessus),
-    // ce qui remettrait sinon la page en haut : on restaure la position de
-    // scroll après coup pour que replier/déplier une console reste sur place.
-    const scrollY = window.scrollY;
-    await render();
-    window.scrollTo(0, scrollY);
+    // Bascule directement dans le DOM déjà rendu, sans passer par render() :
+    // un re-render complet vide puis reconstruit toute la page, ce qui fait
+    // brièvement remonter le scroll (page plus courte pendant la reconstruction)
+    // même en restaurant la position après coup — d'où un "flash" visuel.
+    const body = document.getElementById(`console-body-${consoleId}`);
+    const arrow = document.getElementById(`console-arrow-${consoleId}`);
+    if (body) body.classList.toggle('hidden', isNowCollapsed);
+    if (arrow) arrow.classList.toggle('-rotate-90', isNowCollapsed);
 }
 
 // Base de conversion heures -> jours (réglable, reste une préférence d'affichage
@@ -981,7 +984,7 @@ async function render() {
             let cardHtml = `
                 <div class="bg-slate-700/40 px-5 py-3 border-b border-slate-700 flex flex-wrap justify-between items-center gap-2 cursor-pointer" onclick="toggleConsoleCollapsed(${consoleId})">
                     <h3 class="font-bold text-lg text-slate-200 flex items-center gap-2">
-                        <span class="text-sm transition-transform ${isCollapsed ? '-rotate-90' : ''}">▼</span>
+                        <span id="console-arrow-${consoleId}" class="text-sm transition-transform ${isCollapsed ? '-rotate-90' : ''}">▼</span>
                         🕹️ ${escapeHtml(consoleName)}
                     </h3>
                     <div class="flex items-center gap-3">
@@ -990,7 +993,7 @@ async function render() {
                         <button onclick="event.stopPropagation(); editConsole(${consoleId})" class="text-slate-400 hover:text-indigo-400 transition text-sm">✏️</button>
                     </div>
                 </div>
-                <div class="p-4 ${isCollapsed ? 'hidden' : ''}">
+                <div id="console-body-${consoleId}" class="p-4 ${isCollapsed ? 'hidden' : ''}">
             `;
 
             if (games.length === 0) {
