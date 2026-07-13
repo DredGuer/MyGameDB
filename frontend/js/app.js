@@ -26,14 +26,20 @@ function setConsoleSortOverride(consoleId, value) {
 // à un rechargement de page et à un re-render (une console repliée le reste
 // après une mutation ailleurs dans l'app).
 let collapsedConsoles = new Set(JSON.parse(localStorage.getItem('game_db_collapsed_consoles') || '[]'));
-function toggleConsoleCollapsed(consoleId) {
+async function toggleConsoleCollapsed(consoleId) {
     if (collapsedConsoles.has(consoleId)) {
         collapsedConsoles.delete(consoleId);
     } else {
         collapsedConsoles.add(consoleId);
     }
     localStorage.setItem('game_db_collapsed_consoles', JSON.stringify([...collapsedConsoles]));
-    render();
+
+    // render() reconstruit tout #main-container (et le dashboard au-dessus),
+    // ce qui remettrait sinon la page en haut : on restaure la position de
+    // scroll après coup pour que replier/déplier une console reste sur place.
+    const scrollY = window.scrollY;
+    await render();
+    window.scrollTo(0, scrollY);
 }
 
 // Base de conversion heures -> jours (réglable, reste une préférence d'affichage
