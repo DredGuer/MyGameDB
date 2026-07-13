@@ -1,0 +1,2163 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventaire Jeux Vidéo Premium v5 (SQLite)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <style>
+        @keyframes confetti-fall {
+            0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(110vh) rotate(720deg); opacity: 0.9; }
+        }
+        @keyframes toast-in {
+            0% { transform: translate(-50%, -40px) scale(0.9); opacity: 0; }
+            12% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            88% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -40px) scale(0.9); opacity: 0; }
+        }
+        .confetti-piece {
+            position: fixed;
+            top: -10px;
+            opacity: 0.9;
+            pointer-events: none;
+            z-index: 9998;
+            animation: confetti-fall linear forwards;
+        }
+        .celebration-toast {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            z-index: 10000;
+            animation: toast-in 3s ease-in-out forwards;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-6 font-sans">
+
+    <div class="max-w-6xl mx-auto space-y-8">
+
+        <header class="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-700 pb-4 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-indigo-400">🎮 MyGameDB</h1>
+                <p class="text-slate-400 text-sm">Styles de jeu, dates de possession et analyse par âge</p>
+            </div>
+            <div class="flex flex-wrap gap-2 w-full lg:w-auto">
+                <label class="flex-1 lg:flex-none bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm px-4 py-2 rounded shadow transition font-medium flex items-center justify-center gap-2 cursor-pointer border border-slate-600">
+                    📂 Importer (.sqlite)
+                    <input type="file" id="import-db-file" accept=".sqlite" class="hidden" onchange="importDB(this)">
+                </label>
+                <button onclick="exportMarkdown()" class="flex-1 lg:flex-none bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded shadow transition font-medium flex items-center justify-center gap-2">
+                    📄 Exporter en Markdown (.md)
+                </button>
+                <button onclick="exportDB()" class="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-2 rounded shadow transition font-medium flex items-center justify-center gap-2">
+                    💾 Sauvegarder la Base (.sqlite)
+                </button>
+            </div>
+        </header>
+
+        <!-- Dashboard statistiques -->
+        <div class="flex items-center justify-end gap-2 text-xs text-slate-400 flex-wrap">
+            <label for="hours-per-day-input">⏱️ Base de conversion :</label>
+            <input type="number" id="hours-per-day-input" min="1" max="24" step="0.5" value="8"
+                class="w-16 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-center focus:outline-none focus:border-indigo-500">
+            <span>h / jour</span>
+            <span class="mx-1 text-slate-700">|</span>
+            <label for="birthdate-input">🎂 Date de naissance :</label>
+            <input type="date" id="birthdate-input"
+                class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs focus:outline-none focus:border-indigo-500">
+        </div>
+        <div id="dashboard-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+        <div id="dashboard-breakdown"></div>
+        <div id="dashboard-genre-stats"></div>
+        <div id="dashboard-age-genre"></div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg flex flex-col justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-200 mb-2">1. Créer une Famille</h2>
+                    <p class="text-xs text-slate-400 mb-4">Regroupe tes futurs modèles (ex: Nintendo, Sony, Microsoft...)</p>
+                    <form id="form-family" class="space-y-3">
+                        <div>
+                            <input type="text" id="family-name" placeholder="ex: Nintendo" required
+                                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded text-sm font-medium transition">
+                            Créer la famille
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg flex flex-col justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-200 mb-2">2. Créer une Console</h2>
+                    <p class="text-xs text-slate-400 mb-4">Associe un modèle précis à une famille existante.</p>
+                    <form id="form-console" class="space-y-3">
+                        <div>
+                            <select id="console-family-select" required class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                                <option value="">-- Sélectionner la famille --</option>
+                            </select>
+                        </div>
+                        <div>
+                            <input type="text" id="console-name" placeholder="ex: GameBoy Color, Switch, PS5..." required
+                                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded text-sm font-medium transition">
+                            Créer la console
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg flex flex-col justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-200 mb-2">3. Enregistrer un Jeu</h2>
+                    <p class="text-xs text-slate-400 mb-4">Ajoute ton jeu sur la console de ton choix.</p>
+                    <form id="form-game" class="space-y-3">
+                        <div>
+                            <select id="game-console" required class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                                <option value="">-- Sélectionner la console --</option>
+                            </select>
+                        </div>
+                        <div>
+                            <input type="text" id="game-title" placeholder="Titre du jeu" required
+                                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <select id="game-platform" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                                <option value="Physique">📀 Physique</option>
+                                <option value="Dématérialisé">☁️ Dématérialisé</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-3 items-end">
+                            <div class="flex-1">
+                                <input type="number" id="game-hours" placeholder="Heures" min="0" required
+                                    class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono">
+                            </div>
+                            <label class="flex items-center gap-2 cursor-pointer text-sm bg-slate-900 border border-slate-600 h-[38px] px-3 rounded select-none">
+                                <input type="checkbox" id="game-completed" class="w-4 h-4 rounded accent-indigo-500">
+                                <span>Terminé</span>
+                            </label>
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded text-sm font-medium transition">
+                            Enregistrer le jeu
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Barre de recherche / filtres / tri -->
+        <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg flex flex-col md:flex-row gap-3">
+            <input type="text" id="search-input" placeholder="🔍 Rechercher un jeu..."
+                class="flex-1 bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+            <select id="filter-status" class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">
+                <option value="all">Tous les statuts</option>
+                <option value="ongoing">⏳ En cours</option>
+                <option value="completed">✅ Terminés</option>
+            </select>
+            <select id="sort-by" class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">
+                <option value="title">Trier : Titre (A-Z)</option>
+                <option value="hours">Trier : Heures (desc)</option>
+                <option value="rating">Trier : Note (desc)</option>
+                <option value="date">Trier : Date d'ajout (récent)</option>
+            </select>
+            <button onclick="manageGenres()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">🏷️ Gérer les styles</button>
+        </div>
+
+        <!-- Recommandations IA -->
+        <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-200">🤖 Recommandations IA</h2>
+                    <p class="text-xs text-slate-400">Analyse ta collection et propose 10 jeux personnalisés, avec un score de correspondance ajustable.</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="openLlmSettingsModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">⚙️ Configurer l'IA</button>
+                    <button id="btn-generate-recommendations" onclick="generateRecommendations()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded whitespace-nowrap">✨ Recommander</button>
+                </div>
+            </div>
+            <p id="recommendations-status" class="text-xs text-indigo-300"></p>
+            <div id="recommendations-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <p class="text-slate-500 text-sm italic">Aucune recommandation pour le moment. Clique sur ✨ Recommander pour lancer une première analyse.</p>
+            </div>
+            <div class="border-t border-slate-700 pt-4 space-y-2">
+                <label class="text-xs text-slate-400">Autre précision (langage naturel, ex : "le jeu à 88% a l'air cool mais le temps réel me stresse en ce moment")</label>
+                <textarea id="recommendations-global-feedback" rows="2" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm"></textarea>
+                <button id="btn-refine-recommendations" onclick="refineRecommendations()" class="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm py-2 rounded font-medium">🔄 Affiner</button>
+            </div>
+        </div>
+
+        <div id="main-container" class="space-y-8">
+            </div>
+
+    </div>
+
+    <!-- Modal générique (édition Famille / Console / Jeu) -->
+    <div id="modal-overlay" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto p-6" onclick="event.stopPropagation()">
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script>
+        let db;
+        let SQL;
+
+        // État des filtres
+        let searchQuery = "";
+        let statusFilter = "all";
+        let sortBy = "title";
+
+        // Base de conversion heures -> jours (réglable, persistée localement)
+        let hoursPerDay = parseFloat(localStorage.getItem('game_db_hours_per_day')) || 8;
+        function toDays(hours) {
+            return (hours / hoursPerDay).toFixed(1);
+        }
+
+        // Date de naissance (persistée en base, cf. loadSettings)
+        let userBirthdate = null;
+
+        // Caches pour retrouver les données sans ré-échapper du HTML dans des onclick
+        let familiesCache = {};
+        let consolesCache = {};
+        let gamesCache = {};
+
+        // Initialisation SQLite
+        async function initDB() {
+            SQL = await initSqlJs({
+                locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+            });
+
+            const savedDb = localStorage.getItem("game_db_v3");
+            if (savedDb) {
+                try {
+                    const uInt8Array = new Uint8Array(JSON.parse(savedDb));
+                    db = new SQL.Database(uInt8Array);
+                    db.run("PRAGMA foreign_keys = ON;");
+                    migrateSchema();
+                } catch(e) {
+                    setupNewDB();
+                }
+            } else {
+                setupNewDB();
+            }
+
+            loadSettings();
+            bindFilterEvents();
+            render();
+        }
+
+        // Chargement des réglages persistés en base (contrairement à hoursPerDay, la date
+        // de naissance voyage avec l'export .sqlite puisque c'est une donnée, pas une préférence d'affichage)
+        function loadSettings() {
+            try {
+                const res = db.exec("SELECT value FROM app_settings WHERE key='birthdate'");
+                userBirthdate = (res.length && res[0].values.length) ? res[0].values[0][0] : null;
+            } catch(e) {
+                userBirthdate = null;
+            }
+        }
+
+        function setupNewDB() {
+            db = new SQL.Database();
+            db.run("PRAGMA foreign_keys = ON;");
+            db.run(`
+                CREATE TABLE IF NOT EXISTS families (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS consoles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    family_id INTEGER NOT NULL,
+                    name TEXT UNIQUE NOT NULL,
+                    FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS games (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    console_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    hours INTEGER NOT NULL DEFAULT 0,
+                    completed INTEGER NOT NULL DEFAULT 0,
+                    platform_type TEXT NOT NULL DEFAULT 'Physique',
+                    rating INTEGER,
+                    notes TEXT DEFAULT '',
+                    date_added TEXT DEFAULT (date('now')),
+                    date_completed TEXT,
+                    cover_front TEXT,
+                    cover_back TEXT,
+                    FOREIGN KEY (console_id) REFERENCES consoles(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS screenshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id INTEGER NOT NULL,
+                    title TEXT DEFAULT '',
+                    description TEXT DEFAULT '',
+                    image_data TEXT NOT NULL,
+                    position INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
+                CREATE TABLE IF NOT EXISTS genres (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS game_genres (
+                    game_id INTEGER NOT NULL,
+                    genre_id INTEGER NOT NULL,
+                    PRIMARY KEY (game_id, genre_id),
+                    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+                    FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS game_ownership_periods (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id INTEGER NOT NULL,
+                    date_start TEXT,
+                    date_end TEXT,
+                    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS console_ownership_periods (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    console_id INTEGER NOT NULL,
+                    date_start TEXT,
+                    date_end TEXT,
+                    FOREIGN KEY (console_id) REFERENCES consoles(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS llm_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
+                CREATE TABLE IF NOT EXISTS recommendations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    match_score INTEGER NOT NULL,
+                    reason TEXT,
+                    info_url TEXT,
+                    user_feedback_score INTEGER,
+                    user_disliked_style INTEGER DEFAULT 0,
+                    user_already_done INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+            `);
+            seedDefaultGenres();
+            saveToLocalStorage();
+        }
+
+        // Styles de jeu de base proposés à la création ; l'utilisateur peut en ajouter/supprimer librement ensuite
+        function seedDefaultGenres() {
+            const countRes = db.exec("SELECT COUNT(*) FROM genres");
+            const count = countRes.length ? countRes[0].values[0][0] : 0;
+            if (count > 0) return;
+            const defaults = ['Action', 'Aventure', 'RPG', 'Stratégie', 'FPS', 'Plateforme', 'Sport', 'Course', 'Simulation', 'Puzzle', 'Party Game', 'Survie/Horreur', 'MOBA', 'MMO', 'Rythme/Musical'];
+            defaults.forEach(name => {
+                try { db.run("INSERT INTO genres (name) VALUES (?)", [name]); } catch(e) {}
+            });
+        }
+
+        // Migration douce pour les bases sauvegardées avant l'ajout des nouvelles colonnes
+        function migrateSchema() {
+            const migrations = [
+                "ALTER TABLE games ADD COLUMN platform_type TEXT NOT NULL DEFAULT 'Physique'",
+                "ALTER TABLE games ADD COLUMN rating INTEGER",
+                "ALTER TABLE games ADD COLUMN notes TEXT DEFAULT ''",
+                "ALTER TABLE games ADD COLUMN date_added TEXT",
+                "ALTER TABLE games ADD COLUMN date_completed TEXT",
+                "ALTER TABLE games ADD COLUMN cover_front TEXT",
+                "ALTER TABLE games ADD COLUMN cover_back TEXT"
+            ];
+            migrations.forEach(sql => {
+                try { db.run(sql); } catch(e) { /* colonne déjà existante : on ignore */ }
+            });
+            try {
+                db.run(`
+                    CREATE TABLE IF NOT EXISTS screenshots (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        game_id INTEGER NOT NULL,
+                        title TEXT DEFAULT '',
+                        description TEXT DEFAULT '',
+                        image_data TEXT NOT NULL,
+                        position INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE IF NOT EXISTS app_settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT
+                    );
+                    CREATE TABLE IF NOT EXISTS genres (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT UNIQUE NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS game_genres (
+                        game_id INTEGER NOT NULL,
+                        genre_id INTEGER NOT NULL,
+                        PRIMARY KEY (game_id, genre_id),
+                        FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+                        FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE IF NOT EXISTS game_ownership_periods (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        game_id INTEGER NOT NULL,
+                        date_start TEXT,
+                        date_end TEXT,
+                        FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE IF NOT EXISTS console_ownership_periods (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        console_id INTEGER NOT NULL,
+                        date_start TEXT,
+                        date_end TEXT,
+                        FOREIGN KEY (console_id) REFERENCES consoles(id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE IF NOT EXISTS llm_settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT
+                    );
+                    CREATE TABLE IF NOT EXISTS recommendations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        match_score INTEGER NOT NULL,
+                        reason TEXT,
+                        info_url TEXT,
+                        user_feedback_score INTEGER,
+                        user_disliked_style INTEGER DEFAULT 0,
+                        user_already_done INTEGER DEFAULT 0,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    );
+                `);
+                seedDefaultGenres();
+            } catch(e) {}
+            try {
+                db.run("UPDATE games SET date_added = date('now') WHERE date_added IS NULL");
+            } catch(e) {}
+            saveToLocalStorage();
+        }
+
+        function saveToLocalStorage() {
+            const data = db.export();
+            const array = Array.from(data);
+            localStorage.setItem("game_db_v3", JSON.stringify(array));
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = (str === null || str === undefined) ? '' : String(str);
+            return div.innerHTML;
+        }
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' o';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' Ko';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' Mo';
+        }
+
+        // Redimensionne + compresse une image côté navigateur avant stockage en base64.
+        // Essentiel car le localStorage a une limite (~5-10 Mo) : sans ça, quelques
+        // jaquettes en haute résolution suffiraient à la saturer.
+        function resizeImageFile(file, maxDim, quality) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        let { width, height } = img;
+                        if (width >= height && width > maxDim) {
+                            height = Math.round(height * (maxDim / width));
+                            width = maxDim;
+                        } else if (height > width && height > maxDim) {
+                            width = Math.round(width * (maxDim / height));
+                            height = maxDim;
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', quality));
+                    };
+                    img.onerror = () => reject(new Error("Image illisible"));
+                    img.src = e.target.result;
+                };
+                reader.onerror = () => reject(new Error("Lecture du fichier impossible"));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // --- Modal générique ---
+        function openModal(html) {
+            document.getElementById('modal-body').innerHTML = html;
+            document.getElementById('modal-overlay').classList.remove('hidden');
+        }
+        function closeModal() {
+            document.getElementById('modal-overlay').classList.add('hidden');
+        }
+        document.getElementById('modal-overlay').addEventListener('click', closeModal);
+
+        // --- IMPORT SQLITE ---
+        function importDB(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function() {
+                try {
+                    const Uints = new Uint8Array(reader.result);
+                    const newDb = new SQL.Database(Uints);
+                    newDb.exec("SELECT id FROM families, consoles, games LIMIT 1");
+                    newDb.run("PRAGMA foreign_keys = ON;");
+
+                    db = newDb;
+                    migrateSchema();
+                    render();
+                    alert("Base de données SQLite importée avec succès !");
+                } catch (err) {
+                    alert("Erreur lors de l'import : le fichier n'est pas une base de données SQLite valide pour cette application.");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            input.value = "";
+        }
+
+        function bindFilterEvents() {
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                searchQuery = e.target.value.trim().toLowerCase();
+                render();
+            });
+            document.getElementById('filter-status').addEventListener('change', (e) => {
+                statusFilter = e.target.value;
+                render();
+            });
+            document.getElementById('sort-by').addEventListener('change', (e) => {
+                sortBy = e.target.value;
+                render();
+            });
+
+            const hpdInput = document.getElementById('hours-per-day-input');
+            hpdInput.value = hoursPerDay;
+            hpdInput.addEventListener('change', (e) => {
+                let val = parseFloat(e.target.value);
+                if (!val || val <= 0) val = 8;
+                hoursPerDay = val;
+                localStorage.setItem('game_db_hours_per_day', String(val));
+                render();
+            });
+
+            const birthdateInput = document.getElementById('birthdate-input');
+            birthdateInput.value = userBirthdate || '';
+            birthdateInput.addEventListener('change', (e) => {
+                userBirthdate = e.target.value || null;
+                db.run("DELETE FROM app_settings WHERE key='birthdate'");
+                if (userBirthdate) {
+                    db.run("INSERT INTO app_settings (key, value) VALUES ('birthdate', ?)", [userBirthdate]);
+                }
+                saveToLocalStorage();
+                render();
+            });
+        }
+
+        // Ajouter une Famille
+        document.getElementById("form-family").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const name = document.getElementById("family-name").value.trim();
+            if (!name) return;
+
+            try {
+                db.run("INSERT INTO families (name) VALUES (?)", [name]);
+                saveToLocalStorage();
+                document.getElementById("family-name").value = "";
+                render();
+            } catch (err) {
+                alert("Cette famille existe déjà !");
+            }
+        });
+
+        // Ajouter une Console
+        document.getElementById("form-console").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const familyId = document.getElementById("console-family-select").value;
+            const name = document.getElementById("console-name").value.trim();
+            if (!name || !familyId) return;
+
+            try {
+                db.run("INSERT INTO consoles (family_id, name) VALUES (?, ?)", [familyId, name]);
+                saveToLocalStorage();
+                document.getElementById("console-name").value = "";
+                render();
+            } catch (err) {
+                alert("Cette console existe déjà !");
+            }
+        });
+
+        // Ajouter un Jeu
+        document.getElementById("form-game").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const consoleId = document.getElementById("game-console").value;
+            const title = document.getElementById("game-title").value.trim();
+            const hours = parseInt(document.getElementById("game-hours").value, 10) || 0;
+            const completed = document.getElementById("game-completed").checked ? 1 : 0;
+            const platformType = document.getElementById("game-platform").value;
+
+            if (!consoleId || !title) return;
+
+            const dupRes = db.exec("SELECT id FROM games WHERE console_id = ? AND title = ? COLLATE NOCASE", [consoleId, title]);
+            if (dupRes.length > 0 && dupRes[0].values.length > 0) {
+                if (!confirm("Ce jeu existe déjà sur cette console. L'ajouter quand même ?")) return;
+            }
+
+            db.run("INSERT INTO games (console_id, title, hours, completed, platform_type, date_added) VALUES (?, ?, ?, ?, ?, date('now'))",
+                   [consoleId, title, hours, completed, platformType]);
+
+            saveToLocalStorage();
+            document.getElementById("game-title").value = "";
+            document.getElementById("game-hours").value = "";
+            document.getElementById("game-completed").checked = false;
+            render();
+        });
+
+        // --- CRUD : Famille ---
+        function editFamily(id) {
+            const name = familiesCache[id];
+            if (name === undefined) return;
+            openModal(`
+                <h3 class="text-xl font-bold text-indigo-300 mb-4">Modifier la famille</h3>
+                <label class="text-xs text-slate-400">Nom</label>
+                <input type="text" id="modal-family-name" value="${escapeHtml(name)}" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm mb-4">
+                <div class="flex justify-between gap-2">
+                    <button onclick="deleteFamily(${id})" class="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded text-sm">🗑️ Supprimer</button>
+                    <div class="flex gap-2">
+                        <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Annuler</button>
+                        <button onclick="saveFamilyEdit(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm">Enregistrer</button>
+                    </div>
+                </div>
+            `);
+        }
+        function saveFamilyEdit(id) {
+            const name = document.getElementById('modal-family-name').value.trim();
+            if (!name) return;
+            try {
+                db.run("UPDATE families SET name=? WHERE id=?", [name, id]);
+                saveToLocalStorage();
+                closeModal();
+                render();
+            } catch(e) {
+                alert("Ce nom de famille existe déjà !");
+            }
+        }
+        function deleteFamily(id) {
+            if (!confirm("Supprimer cette famille supprimera aussi TOUTES ses consoles et TOUS ses jeux associés. Confirmer ?")) return;
+            db.run("DELETE FROM families WHERE id=?", [id]);
+            saveToLocalStorage();
+            closeModal();
+            render();
+        }
+
+        // --- CRUD : Console ---
+        function editConsole(id) {
+            const c = consolesCache[id];
+            if (!c) return;
+            const familiesRes = db.exec("SELECT id, name FROM families ORDER BY name ASC");
+            let optionsHtml = '';
+            if (familiesRes.length > 0) {
+                familiesRes[0].values.forEach(([fid, fname]) => {
+                    optionsHtml += `<option value="${fid}" ${fid === c.familyId ? 'selected' : ''}>${escapeHtml(fname)}</option>`;
+                });
+            }
+
+            const periodsRes = db.exec("SELECT id, date_start, date_end FROM console_ownership_periods WHERE console_id=? ORDER BY date_start ASC", [id]);
+            const periods = periodsRes.length ? periodsRes[0].values : [];
+            const periodsHtml = periods.map(([pid, ds, de]) => `
+                <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs">
+                    <span class="text-slate-300">${ds || '?'} → ${de || 'en cours'}</span>
+                    <button onclick="deleteConsoleOwnershipPeriod(${pid}, ${id})" class="text-rose-400 hover:text-rose-300">🗑️</button>
+                </div>
+            `).join('');
+
+            openModal(`
+                <h3 class="text-xl font-bold text-indigo-300 mb-4">Modifier la console</h3>
+                <label class="text-xs text-slate-400">Famille</label>
+                <select id="modal-console-family" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm mb-3">${optionsHtml}</select>
+                <label class="text-xs text-slate-400">Nom</label>
+                <input type="text" id="modal-console-name" value="${escapeHtml(c.name)}" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm mb-4">
+
+                <div class="border-t border-slate-700 pt-3 mb-4">
+                    <label class="text-xs text-slate-400 block mb-2">📅 Dates de possession de la console</label>
+                    <p class="text-[10px] text-slate-500 mb-2">Plusieurs périodes possibles si tu as revendu/racheté la machine.</p>
+                    <div class="space-y-1 mb-2">${periodsHtml || '<p class="text-slate-500 text-xs italic">Aucune période enregistrée.</p>'}</div>
+                    <div class="flex gap-2 items-end">
+                        <div class="flex-1">
+                            <label class="text-[10px] text-slate-500">Acquise le</label>
+                            <input type="date" id="new-period-console-start" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
+                        </div>
+                        <div class="flex-1">
+                            <label class="text-[10px] text-slate-500">Cédée le (optionnel)</label>
+                            <input type="date" id="new-period-console-end" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
+                        </div>
+                        <button onclick="addConsoleOwnershipPeriod(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs whitespace-nowrap">+ Ajouter</button>
+                    </div>
+                </div>
+
+                <div class="flex justify-between gap-2">
+                    <button onclick="deleteConsole(${id})" class="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded text-sm">🗑️ Supprimer</button>
+                    <div class="flex gap-2">
+                        <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Annuler</button>
+                        <button onclick="saveConsoleEdit(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm">Enregistrer</button>
+                    </div>
+                </div>
+            `);
+        }
+        function addConsoleOwnershipPeriod(consoleId) {
+            const start = document.getElementById('new-period-console-start').value;
+            const end = document.getElementById('new-period-console-end').value || null;
+            if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
+            db.run("INSERT INTO console_ownership_periods (console_id, date_start, date_end) VALUES (?, ?, ?)", [consoleId, start, end]);
+            saveToLocalStorage();
+            render();
+            editConsole(consoleId);
+        }
+        function deleteConsoleOwnershipPeriod(periodId, consoleId) {
+            db.run("DELETE FROM console_ownership_periods WHERE id=?", [periodId]);
+            saveToLocalStorage();
+            render();
+            editConsole(consoleId);
+        }
+
+        // --- Gestion des styles de jeu (tags) ---
+        function manageGenres() {
+            const res = db.exec(`
+                SELECT g.id, g.name, COUNT(gg.game_id) as cnt
+                FROM genres g
+                LEFT JOIN game_genres gg ON gg.genre_id = g.id
+                GROUP BY g.id ORDER BY g.name ASC
+            `);
+            const rows = res.length ? res[0].values : [];
+            const listHtml = rows.map(([gid, name, cnt]) => `
+                <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded px-3 py-2">
+                    <span class="text-sm text-slate-200">${escapeHtml(name)} <span class="text-xs text-slate-500">(${cnt} jeu${cnt > 1 ? 'x' : ''})</span></span>
+                    <button onclick="deleteGenre(${gid})" class="text-rose-400 hover:text-rose-300 text-xs">🗑️</button>
+                </div>
+            `).join('');
+
+            openModal(`
+                <h3 class="text-xl font-bold text-indigo-300 mb-4">🏷️ Gérer les styles de jeu</h3>
+                <div class="space-y-2 mb-4 max-h-64 overflow-y-auto">${listHtml || '<p class="text-slate-500 text-sm italic">Aucun style défini.</p>'}</div>
+                <div class="flex gap-2">
+                    <input type="text" id="manage-new-genre-name" placeholder="Nouveau style (ex: Roguelike)" class="flex-1 bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">
+                    <button onclick="createGenreStandalone()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm">Ajouter</button>
+                </div>
+                <div class="flex justify-end mt-4">
+                    <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Fermer</button>
+                </div>
+            `);
+        }
+        function createGenreStandalone() {
+            const input = document.getElementById('manage-new-genre-name');
+            const name = input.value.trim();
+            if (!name) return;
+            try {
+                db.run("INSERT INTO genres (name) VALUES (?)", [name]);
+                saveToLocalStorage();
+                manageGenres();
+            } catch(e) {
+                alert("Ce style existe déjà !");
+            }
+        }
+        function deleteGenre(id) {
+            if (!confirm("Supprimer ce style ? Il sera retiré de tous les jeux qui l'utilisaient.")) return;
+            db.run("DELETE FROM genres WHERE id=?", [id]);
+            saveToLocalStorage();
+            render();
+            manageGenres();
+        }
+        function toggleGameGenre(gameId, genreId, isActive) {
+            if (isActive) {
+                db.run("DELETE FROM game_genres WHERE game_id=? AND genre_id=?", [gameId, genreId]);
+            } else {
+                try { db.run("INSERT INTO game_genres (game_id, genre_id) VALUES (?, ?)", [gameId, genreId]); } catch(e) {}
+            }
+            saveToLocalStorage();
+            render();
+            editGame(gameId);
+        }
+        function addNewGenreInline(gameId) {
+            const input = document.getElementById('new-genre-name');
+            const name = input.value.trim();
+            if (!name) return;
+            try {
+                db.run("INSERT INTO genres (name) VALUES (?)", [name]);
+                const idRes = db.exec("SELECT id FROM genres WHERE name = ?", [name]);
+                const newId = idRes[0].values[0][0];
+                db.run("INSERT INTO game_genres (game_id, genre_id) VALUES (?, ?)", [gameId, newId]);
+                saveToLocalStorage();
+                render();
+                editGame(gameId);
+            } catch(e) {
+                alert("Ce style existe déjà ! Sélectionne-le directement dans la liste des tags.");
+            }
+        }
+
+        // Déduit automatiquement le(s) style(s) d'un jeu via le LLM configuré, à partir de son
+        // titre et de sa console. Réutilise callLLM() — nécessite une clé API déjà configurée.
+        async function autoDetectGenre(gameId) {
+            const g = gamesCache[gameId];
+            if (!g) return;
+            const btn = document.getElementById('btn-autodetect-genre-' + gameId);
+            const originalLabel = btn ? btn.textContent : '';
+            if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+
+            try {
+                const consoleRow = db.exec("SELECT c.name FROM consoles c JOIN games ga ON ga.console_id = c.id WHERE ga.id = ?", [gameId]);
+                const consoleName = (consoleRow.length && consoleRow[0].values.length) ? consoleRow[0].values[0][0] : '';
+
+                const existingGenresRes = db.exec("SELECT name FROM genres ORDER BY name ASC");
+                const existingGenres = existingGenresRes.length ? existingGenresRes[0].values.map(r => r[0]) : [];
+
+                const systemPrompt = `Tu es un expert en catégorisation de jeux vidéo. On te donne un titre de jeu et éventuellement sa console. Réponds STRICTEMENT en JSON de la forme {"genres": ["Style1", "Style2"]} en choisissant en priorité parmi les styles déjà existants dans la base : ${existingGenres.join(', ') || '(aucun pour le moment)'}. Si aucun style existant ne convient bien, tu peux proposer un nouveau style court et générique (1-2 mots).`;
+                const userContent = `Titre du jeu : ${g.title}${consoleName ? `\nConsole : ${consoleName}` : ''}`;
+                const toolSchema = {
+                    name: 'submit_genres',
+                    description: 'Soumets la liste des styles de jeu détectés.',
+                    input_schema: {
+                        type: 'object',
+                        properties: { genres: { type: 'array', items: { type: 'string' } } },
+                        required: ['genres']
+                    }
+                };
+
+                const result = await callLLM(systemPrompt, userContent, toolSchema);
+                const genres = result.genres || [];
+                if (!Array.isArray(genres) || genres.length === 0) throw new Error("Le LLM n'a proposé aucun style.");
+
+                genres.forEach(name => {
+                    const trimmed = String(name).trim();
+                    if (!trimmed) return;
+                    try { db.run("INSERT INTO genres (name) VALUES (?)", [trimmed]); } catch(e) { /* existe déjà */ }
+                    const idRes = db.exec("SELECT id FROM genres WHERE name = ? COLLATE NOCASE", [trimmed]);
+                    if (idRes.length && idRes[0].values.length) {
+                        const genreId = idRes[0].values[0][0];
+                        try { db.run("INSERT INTO game_genres (game_id, genre_id) VALUES (?, ?)", [gameId, genreId]); } catch(e) { /* déjà taggé */ }
+                    }
+                });
+                saveToLocalStorage();
+                render();
+                editGame(gameId);
+            } catch (err) {
+                alert("Erreur lors de la détection automatique : " + (err.message || err));
+                if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+            }
+        }
+
+        function saveConsoleEdit(id) {
+            const name = document.getElementById('modal-console-name').value.trim();
+            const familyId = document.getElementById('modal-console-family').value;
+            if (!name || !familyId) return;
+            try {
+                db.run("UPDATE consoles SET name=?, family_id=? WHERE id=?", [name, familyId, id]);
+                saveToLocalStorage();
+                closeModal();
+                render();
+            } catch(e) {
+                alert("Ce nom de console existe déjà !");
+            }
+        }
+        function deleteConsole(id) {
+            if (!confirm("Supprimer cette console supprimera aussi TOUS ses jeux associés. Confirmer ?")) return;
+            db.run("DELETE FROM consoles WHERE id=?", [id]);
+            saveToLocalStorage();
+            closeModal();
+            render();
+        }
+
+        // --- CRUD : Jeu ---
+        function editGame(id) {
+            const g = gamesCache[id];
+            if (!g) return;
+
+            const screenshotsRes = db.exec("SELECT id, title, description, image_data FROM screenshots WHERE game_id=? ORDER BY position ASC, id ASC", [id]);
+            const screenshots = screenshotsRes.length ? screenshotsRes[0].values : [];
+
+            const allGenresRes = db.exec("SELECT id, name FROM genres ORDER BY name ASC");
+            const allGenres = allGenresRes.length ? allGenresRes[0].values : [];
+            const activeGenreIdsRes = db.exec("SELECT genre_id FROM game_genres WHERE game_id=?", [id]);
+            const activeGenreIds = new Set(activeGenreIdsRes.length ? activeGenreIdsRes[0].values.map(r => r[0]) : []);
+            const genreChipsHtml = allGenres.map(([gid, gname]) => {
+                const isActive = activeGenreIds.has(gid);
+                return `<button onclick="toggleGameGenre(${id}, ${gid}, ${isActive})" class="px-2.5 py-1 rounded-full text-xs border transition ${isActive ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-600 text-slate-400 hover:border-indigo-500'}">${escapeHtml(gname)}</button>`;
+            }).join(' ');
+
+            const gamePeriodsRes = db.exec("SELECT id, date_start, date_end FROM game_ownership_periods WHERE game_id=? ORDER BY date_start ASC", [id]);
+            const gamePeriods = gamePeriodsRes.length ? gamePeriodsRes[0].values : [];
+            const gamePeriodsHtml = gamePeriods.map(([pid, ds, de]) => `
+                <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs">
+                    <span class="text-slate-300">${ds || '?'} → ${de || 'en cours'}</span>
+                    <button onclick="deleteGameOwnershipPeriod(${pid}, ${id})" class="text-rose-400 hover:text-rose-300">🗑️</button>
+                </div>
+            `).join('');
+
+            const coverBlock = (side, dataUrl) => dataUrl
+                ? `<div class="relative">
+                        <img src="${dataUrl}" class="w-full h-32 object-cover rounded-lg border border-slate-600">
+                        <button onclick="removeCover(${id}, '${side}')" class="absolute top-1 right-1 bg-rose-600 hover:bg-rose-500 text-white text-xs w-6 h-6 rounded-full leading-none">✕</button>
+                   </div>`
+                : `<label class="flex items-center justify-center h-32 border-2 border-dashed border-slate-600 rounded-lg cursor-pointer hover:border-indigo-500 text-slate-500 text-xs text-center px-2">
+                        + Ajouter
+                        <input type="file" accept="image/*" class="hidden" onchange="handleCoverUpload(${id}, '${side}', this)">
+                   </label>`;
+
+            const screenshotsGridHtml = screenshots.map(([ssId, ssTitle, ssDesc, ssData]) => `
+                <div class="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden">
+                    <img src="${ssData}" class="w-full h-24 object-cover" alt="Screenshot">
+                    <div class="p-2 space-y-1">
+                        <input type="text" id="ss-title-${ssId}" value="${escapeHtml(ssTitle || '')}" placeholder="Titre" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">
+                        <textarea id="ss-desc-${ssId}" rows="2" placeholder="Description" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">${escapeHtml(ssDesc || '')}</textarea>
+                        <div class="flex justify-between items-center gap-1">
+                            <button onclick="deleteScreenshot(${ssId}, ${id})" class="text-rose-400 hover:text-rose-300 text-xs">🗑️ Suppr.</button>
+                            <button onclick="saveScreenshotCaption(${ssId}, this)" class="text-indigo-400 hover:text-indigo-300 text-xs font-medium">💾 Enreg.</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            openModal(`
+                <h3 class="text-xl font-bold text-indigo-300 mb-4">Modifier le jeu</h3>
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-xs text-slate-400">Titre</label>
+                        <input type="text" id="modal-game-title" value="${escapeHtml(g.title)}" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">🎨 Jaquette avant</label>
+                            ${coverBlock('front', g.coverFront)}
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">🎨 Jaquette arrière</label>
+                            ${coverBlock('back', g.coverBack)}
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-700 pt-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="text-xs text-slate-400">🏷️ Styles de jeu (combinables)</label>
+                            <button id="btn-autodetect-genre-${id}" onclick="autoDetectGenre(${id})" class="bg-fuchsia-600 hover:bg-fuchsia-500 text-white px-2.5 py-1 rounded text-xs whitespace-nowrap">🤖 Auto-détecter le style</button>
+                        </div>
+                        <div class="flex flex-wrap gap-1.5 mb-2">${genreChipsHtml || '<span class="text-slate-500 text-xs italic">Aucun style défini — crée-en un ci-dessous.</span>'}</div>
+                        <div class="flex gap-2">
+                            <input type="text" id="new-genre-name" placeholder="Nouveau style..." class="flex-1 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
+                            <button onclick="addNewGenreInline(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs whitespace-nowrap">+ Créer et taguer</button>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-700 pt-3">
+                        <label class="text-xs text-slate-400 block mb-2">📅 Dates de possession du jeu</label>
+                        <p class="text-[10px] text-slate-500 mb-2">Plusieurs périodes possibles (rachat après revente, etc.). Sert aussi à l'analyse "styles par âge" ci-dessous dans le dashboard.</p>
+                        <div class="space-y-1 mb-2">${gamePeriodsHtml || '<p class="text-slate-500 text-xs italic">Aucune période enregistrée.</p>'}</div>
+                        <div class="flex gap-2 items-end">
+                            <div class="flex-1">
+                                <label class="text-[10px] text-slate-500">Acquis le</label>
+                                <input type="date" id="new-period-game-start" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
+                            </div>
+                            <div class="flex-1">
+                                <label class="text-[10px] text-slate-500">Cédé le (optionnel)</label>
+                                <input type="date" id="new-period-game-end" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
+                            </div>
+                            <button onclick="addGameOwnershipPeriod(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs whitespace-nowrap">+ Ajouter</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-slate-400">Heures</label>
+                            <input type="number" id="modal-game-hours" value="${g.hours}" min="0"
+                                oninput="document.getElementById('modal-game-hours-days').textContent = '≈ ' + ((parseFloat(this.value)||0)/hoursPerDay).toFixed(1) + ' j'"
+                                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono">
+                            <p id="modal-game-hours-days" class="text-[10px] text-slate-500 mt-1">≈ ${toDays(g.hours)} j</p>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400">Note (/10)</label>
+                            <input type="number" id="modal-game-rating" value="${g.rating === null || g.rating === undefined ? '' : g.rating}" min="0" max="10" placeholder="—" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-slate-400">Support</label>
+                            <select id="modal-game-platform" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">
+                                <option value="Physique" ${g.platformType === 'Physique' ? 'selected' : ''}>📀 Physique</option>
+                                <option value="Dématérialisé" ${g.platformType === 'Dématérialisé' ? 'selected' : ''}>☁️ Dématérialisé</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end">
+                            <label class="flex items-center gap-2 cursor-pointer text-sm bg-slate-900 border border-slate-600 h-[38px] px-3 rounded select-none w-full">
+                                <input type="checkbox" id="modal-game-completed" class="w-4 h-4 rounded accent-indigo-500" ${g.completed ? 'checked' : ''}>
+                                <span>Terminé</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400">Date de complétion</label>
+                        <input type="date" id="modal-game-date-completed" value="${g.dateCompleted || ''}" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400">Notes / Commentaires</label>
+                        <textarea id="modal-game-notes" rows="3" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">${escapeHtml(g.notes || '')}</textarea>
+                    </div>
+
+                    <div class="border-t border-slate-700 pt-3">
+                        <label class="text-xs text-slate-400 block mb-2">📸 Screenshots (${screenshots.length})</label>
+                        ${screenshots.length > 0 ? `<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">${screenshotsGridHtml}</div>` : ''}
+                        <div class="bg-slate-900/50 border border-dashed border-slate-600 rounded-lg p-3 space-y-2">
+                            <p class="text-xs text-slate-400">+ Ajouter un screenshot</p>
+                            <input type="file" id="new-screenshot-file" accept="image/*" class="w-full text-xs text-slate-400">
+                            <input type="text" id="new-screenshot-title" placeholder="Titre (optionnel)" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">
+                            <textarea id="new-screenshot-desc" rows="2" placeholder="Description (optionnelle)" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs"></textarea>
+                            <button onclick="addScreenshot(${id})" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded text-xs font-medium">Ajouter le screenshot</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-between gap-2 mt-5">
+                    <button onclick="deleteGame(${id})" class="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded text-sm">🗑️ Supprimer</button>
+                    <div class="flex gap-2">
+                        <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Annuler</button>
+                        <button onclick="saveGameEdit(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm">Enregistrer</button>
+                    </div>
+                </div>
+            `);
+        }
+        function saveGameEdit(id) {
+            const previouslyCompleted = gamesCache[id] ? gamesCache[id].completed : 0;
+
+            const title = document.getElementById('modal-game-title').value.trim();
+            const hours = parseInt(document.getElementById('modal-game-hours').value, 10) || 0;
+            const completed = document.getElementById('modal-game-completed').checked ? 1 : 0;
+            const platformType = document.getElementById('modal-game-platform').value;
+            const ratingRaw = document.getElementById('modal-game-rating').value;
+            const rating = ratingRaw === '' ? null : Math.max(0, Math.min(10, parseInt(ratingRaw, 10)));
+            const notes = document.getElementById('modal-game-notes').value.trim();
+            let dateCompleted = document.getElementById('modal-game-date-completed').value || null;
+
+            if (completed && !dateCompleted) dateCompleted = new Date().toISOString().split('T')[0];
+            if (!completed) dateCompleted = null;
+
+            if (!title) { alert("Le titre ne peut pas être vide."); return; }
+
+            db.run("UPDATE games SET title=?, hours=?, completed=?, platform_type=?, rating=?, notes=?, date_completed=? WHERE id=?",
+                [title, hours, completed, platformType, rating, notes, dateCompleted, id]);
+            saveToLocalStorage();
+            closeModal();
+            render();
+
+            if (!previouslyCompleted && completed) {
+                celebrateCompletion(title);
+            }
+        }
+
+        // --- Petit effet WOUAHHH : célébration à la complétion d'un jeu ---
+        function celebrateCompletion(title) {
+            const colors = ['#818cf8', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#f472b6', '#a78bfa'];
+            const container = document.createElement('div');
+            container.style.position = 'fixed';
+            container.style.inset = '0';
+            container.style.pointerEvents = 'none';
+            container.style.zIndex = '9997';
+            document.body.appendChild(container);
+
+            for (let i = 0; i < 70; i++) {
+                const piece = document.createElement('div');
+                piece.className = 'confetti-piece';
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                const left = Math.random() * 100;
+                const size = 6 + Math.random() * 8;
+                const duration = 2 + Math.random() * 1.5;
+                const delay = Math.random() * 0.4;
+                const isCircle = Math.random() > 0.5;
+                piece.style.left = left + 'vw';
+                piece.style.width = size + 'px';
+                piece.style.height = size + 'px';
+                piece.style.background = color;
+                piece.style.borderRadius = isCircle ? '50%' : '2px';
+                piece.style.animationDuration = duration + 's';
+                piece.style.animationDelay = delay + 's';
+                container.appendChild(piece);
+            }
+            setTimeout(() => container.remove(), 4200);
+
+            const toast = document.createElement('div');
+            toast.className = 'celebration-toast bg-slate-800 border border-emerald-500/40 shadow-2xl px-6 py-4 rounded-xl';
+            toast.innerHTML = `<p class="text-emerald-400 font-bold text-lg whitespace-nowrap">🏆 ${escapeHtml(title)} — Terminé ! Bravo !</p>`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3100);
+        }
+        function deleteGame(id) {
+            if (!confirm("Supprimer ce jeu ?")) return;
+            db.run("DELETE FROM games WHERE id = ?", [id]);
+            saveToLocalStorage();
+            closeModal();
+            render();
+        }
+        function addGameOwnershipPeriod(gameId) {
+            const start = document.getElementById('new-period-game-start').value;
+            const end = document.getElementById('new-period-game-end').value || null;
+            if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
+            db.run("INSERT INTO game_ownership_periods (game_id, date_start, date_end) VALUES (?, ?, ?)", [gameId, start, end]);
+            saveToLocalStorage();
+            render();
+            editGame(gameId);
+        }
+        function deleteGameOwnershipPeriod(periodId, gameId) {
+            db.run("DELETE FROM game_ownership_periods WHERE id=?", [periodId]);
+            saveToLocalStorage();
+            render();
+            editGame(gameId);
+        }
+
+        // --- Jaquettes (avant / arrière) ---
+        async function handleCoverUpload(gameId, side, input) {
+            const file = input.files[0];
+            if (!file) return;
+            try {
+                const dataUrl = await resizeImageFile(file, 700, 0.82);
+                const column = side === 'front' ? 'cover_front' : 'cover_back';
+                db.run(`UPDATE games SET ${column} = ? WHERE id = ?`, [dataUrl, gameId]);
+                saveToLocalStorage();
+                render();
+                editGame(gameId); // rafraîchit la modale avec la nouvelle image
+            } catch (e) {
+                alert("Erreur lors du traitement de l'image.");
+            }
+            input.value = "";
+        }
+        function removeCover(gameId, side) {
+            if (!confirm("Supprimer cette jaquette ?")) return;
+            const column = side === 'front' ? 'cover_front' : 'cover_back';
+            db.run(`UPDATE games SET ${column} = NULL WHERE id = ?`, [gameId]);
+            saveToLocalStorage();
+            render();
+            editGame(gameId);
+        }
+
+        // --- Screenshots ---
+        async function addScreenshot(gameId) {
+            const fileInput = document.getElementById('new-screenshot-file');
+            const titleInput = document.getElementById('new-screenshot-title');
+            const descInput = document.getElementById('new-screenshot-desc');
+            const file = fileInput.files[0];
+            if (!file) { alert("Choisis d'abord une image."); return; }
+
+            const title = titleInput.value.trim();
+            const description = descInput.value.trim();
+            try {
+                const dataUrl = await resizeImageFile(file, 1000, 0.78);
+                const posRes = db.exec("SELECT COALESCE(MAX(position), -1) + 1 FROM screenshots WHERE game_id = ?", [gameId]);
+                const position = posRes.length ? posRes[0].values[0][0] : 0;
+                db.run("INSERT INTO screenshots (game_id, title, description, image_data, position) VALUES (?, ?, ?, ?, ?)",
+                    [gameId, title, description, dataUrl, position]);
+                saveToLocalStorage();
+                render();
+                editGame(gameId);
+            } catch (e) {
+                alert("Erreur lors du traitement de l'image.");
+            }
+        }
+        function saveScreenshotCaption(ssId, btnEl) {
+            const title = document.getElementById(`ss-title-${ssId}`).value.trim();
+            const description = document.getElementById(`ss-desc-${ssId}`).value.trim();
+            db.run("UPDATE screenshots SET title=?, description=? WHERE id=?", [title, description, ssId]);
+            saveToLocalStorage();
+            const original = btnEl.textContent;
+            btnEl.textContent = '✅ Enregistré';
+            setTimeout(() => { btnEl.textContent = original; }, 1200);
+        }
+        function deleteScreenshot(ssId, gameId) {
+            if (!confirm("Supprimer ce screenshot ?")) return;
+            db.run("DELETE FROM screenshots WHERE id = ?", [ssId]);
+            saveToLocalStorage();
+            render();
+            editGame(gameId);
+        }
+
+        function exportDB() {
+            const binaryArray = db.export();
+            const blob = new Blob([binaryArray], { type: "application/x-sqlite3" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "ma_collection_jeux.sqlite";
+            link.click();
+        }
+
+        function exportMarkdown() {
+            const md = buildInventoryMarkdown();
+            if (md === null) {
+                alert("Votre base de données est vide !");
+                return;
+            }
+
+            const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "mon_inventaire_jeux.md";
+            link.click();
+        }
+
+        // Génère le Markdown de l'inventaire complet. Réutilisé par exportMarkdown() (export fichier)
+        // et par le payload envoyé au LLM pour les recommandations.
+        function buildInventoryMarkdown() {
+            const familiesRes = db.exec("SELECT id, name FROM families ORDER BY name ASC");
+            if (familiesRes.length === 0 || familiesRes[0].values.length === 0) {
+                return null;
+            }
+
+            let md = "# 🎮 Mon Inventaire de Jeux Vidéo\n\n";
+            md += "_Légende Média : 🎨 = jaquette disponible, 🖼️x N = nombre de screenshots. Les images elles-mêmes ne sont pas incluses ici — utilise l'export .sqlite pour les récupérer._\n";
+
+            familiesRes[0].values.forEach(([familyId, familyName]) => {
+                md += `\n## 📁 Famille : ${familyName}\n`;
+
+                const consolesRes = db.exec("SELECT id, name FROM consoles WHERE family_id = ? ORDER BY name ASC", [familyId]);
+                const consoles = (consolesRes.length > 0) ? consolesRes[0].values : [];
+
+                if (consoles.length === 0) {
+                    md += "_Aucune console enregistrée dans cette famille._\n";
+                }
+
+                consoles.forEach(([consoleId, name]) => {
+                    md += `\n### 🕹️ ${name}\n`;
+
+                    const gamesRes = db.exec(`
+                        SELECT g.title, g.hours, g.completed, g.platform_type, g.rating, g.notes,
+                               (CASE WHEN g.cover_front IS NOT NULL OR g.cover_back IS NOT NULL THEN 1 ELSE 0 END) as has_cover,
+                               (SELECT COUNT(*) FROM screenshots s WHERE s.game_id = g.id) as screenshot_count,
+                               (SELECT GROUP_CONCAT(gn.name, ', ') FROM game_genres gg2 JOIN genres gn ON gn.id = gg2.genre_id WHERE gg2.game_id = g.id) as genre_names
+                        FROM games g WHERE g.console_id = ? ORDER BY g.title ASC
+                    `, [consoleId]);
+                    const games = (gamesRes.length > 0) ? gamesRes[0].values : [];
+
+                    if (games.length === 0) {
+                        md += "_Aucun jeu enregistré sur cette console._\n";
+                    } else {
+                        md += "| Jeu | Styles | Support | Heures | Note | Terminé ? | Média | Notes |\n";
+                        md += "| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |\n";
+                        games.forEach(([title, hours, completed, platformType, rating, notes, hasCover, screenshotCount, genreNames]) => {
+                            const status = completed ? "✅ Oui" : "❌ Non (En cours)";
+                            const ratingStr = (rating !== null && rating !== undefined) ? `${rating}/10` : "—";
+                            const notesStr = notes ? String(notes).replace(/\|/g, "/").replace(/\n/g, " ") : "";
+                            const mediaStr = `${hasCover ? "🎨" : ""}${screenshotCount > 0 ? ` 🖼️x${screenshotCount}` : ""}`.trim() || "—";
+                            const stylesStr = genreNames || "—";
+                            md += `| ${title} | ${stylesStr} | ${platformType} | ${hours}h | ${ratingStr} | ${status} | ${mediaStr} | ${notesStr} |\n`;
+                        });
+                    }
+                });
+            });
+
+            return md;
+        }
+
+        // --- Réglages LLM (stockés en base, table llm_settings clé/valeur) ---
+        function getLlmSetting(key) {
+            try {
+                const res = db.exec("SELECT value FROM llm_settings WHERE key=?", [key]);
+                return (res.length && res[0].values.length) ? res[0].values[0][0] : null;
+            } catch(e) {
+                return null;
+            }
+        }
+        function setLlmSetting(key, value) {
+            db.run("DELETE FROM llm_settings WHERE key=?", [key]);
+            if (value !== null && value !== undefined && value !== '') {
+                db.run("INSERT INTO llm_settings (key, value) VALUES (?, ?)", [key, value]);
+            }
+            saveToLocalStorage();
+        }
+
+        const LLM_DEFAULT_MODELS = {
+            gemini: 'gemini-2.5-flash',
+            claude: 'claude-opus-4-8',
+            openai: 'gpt-4o-mini',
+            mistral: 'mistral-small-latest'
+        };
+
+        // Parseur JSON tolérant : essaie un parse direct, puis extrait un bloc ```json``` ou le
+        // premier objet {...} équilibré si le modèle a entouré la réponse de texte/markdown.
+        // Utile pour Gemini/OpenAI/Mistral ; Claude passe par tool-use forcé et n'en a pas besoin.
+        function extractJsonFromText(text) {
+            try {
+                return JSON.parse(text);
+            } catch(e) { /* on tente une extraction plus tolérante ci-dessous */ }
+
+            const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+            if (fenceMatch) {
+                try { return JSON.parse(fenceMatch[1]); } catch(e) {}
+            }
+
+            const start = text.indexOf('{');
+            if (start !== -1) {
+                let depth = 0;
+                for (let i = start; i < text.length; i++) {
+                    if (text[i] === '{') depth++;
+                    else if (text[i] === '}') {
+                        depth--;
+                        if (depth === 0) {
+                            try { return JSON.parse(text.slice(start, i + 1)); } catch(e) { break; }
+                        }
+                    }
+                }
+            }
+            throw new Error("Réponse du LLM illisible : aucun JSON valide trouvé.");
+        }
+
+        // --- Appels LLM multi-fournisseurs ---
+        // Point d'entrée unique : route vers le fournisseur configuré. `toolSchema` est optionnel
+        // et sert uniquement pour Claude (tool-use forcé) ; les autres fournisseurs sont invités via
+        // le prompt système à répondre en JSON de la même forme.
+        async function callLLM(systemPrompt, userContent, toolSchema) {
+            const provider = getLlmSetting('llm_provider') || 'gemini';
+            const apiKey = getLlmSetting('llm_api_key_' + provider);
+            if (!apiKey) {
+                throw new Error("Aucune clé API configurée pour " + provider + ". Clique sur ⚙️ Configurer l'IA.");
+            }
+            const model = getLlmSetting('llm_model_' + provider) || LLM_DEFAULT_MODELS[provider];
+
+            switch (provider) {
+                case 'gemini': return callGemini(apiKey, model, systemPrompt, userContent);
+                case 'claude': return callClaude(apiKey, model, systemPrompt, userContent, toolSchema);
+                case 'openai': return callOpenAI(apiKey, model, systemPrompt, userContent);
+                case 'mistral': return callMistral(apiKey, model, systemPrompt, userContent);
+                default: throw new Error("Fournisseur LLM inconnu : " + provider);
+            }
+        }
+
+        async function callGemini(apiKey, model, systemPrompt, userContent) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    contents: [{ role: 'user', parts: [{ text: userContent }] }],
+                    generationConfig: { responseMimeType: 'application/json' }
+                })
+            });
+            if (!res.ok) throw new Error(`Gemini a répondu ${res.status} : ${(await res.text()).slice(0, 300)}`);
+            const data = await res.json();
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error("Gemini n'a renvoyé aucun texte exploitable.");
+            return extractJsonFromText(text);
+        }
+
+        async function callClaude(apiKey, model, systemPrompt, userContent, toolSchema) {
+            const tool = toolSchema || {
+                name: 'submit_json',
+                description: 'Soumets la réponse structurée.',
+                input_schema: { type: 'object', properties: {}, additionalProperties: true }
+            };
+            // Le bloc system est marqué cache_control : lors des raffinements successifs (même
+            // prompt système, même inventaire), Claude sert la portion mise en cache à ~10% du prix.
+            const res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify({
+                    model: model,
+                    max_tokens: 4096,
+                    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+                    tools: [tool],
+                    tool_choice: { type: 'tool', name: tool.name },
+                    messages: [{ role: 'user', content: userContent }]
+                })
+            });
+            if (!res.ok) throw new Error(`Claude a répondu ${res.status} : ${(await res.text()).slice(0, 300)}`);
+            const data = await res.json();
+            const toolUse = (data.content || []).find(b => b.type === 'tool_use');
+            if (!toolUse) throw new Error("Claude n'a renvoyé aucun appel d'outil exploitable.");
+            return toolUse.input;
+        }
+
+        async function callOpenAI(apiKey, model, systemPrompt, userContent) {
+            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + apiKey
+                },
+                body: JSON.stringify({
+                    model: model,
+                    response_format: { type: 'json_object' },
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userContent }
+                    ]
+                })
+            });
+            if (!res.ok) throw new Error(`OpenAI a répondu ${res.status} : ${(await res.text()).slice(0, 300)}`);
+            const data = await res.json();
+            const text = data?.choices?.[0]?.message?.content;
+            if (!text) throw new Error("OpenAI n'a renvoyé aucun texte exploitable.");
+            return extractJsonFromText(text);
+        }
+
+        async function callMistral(apiKey, model, systemPrompt, userContent) {
+            const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + apiKey
+                },
+                body: JSON.stringify({
+                    model: model,
+                    response_format: { type: 'json_object' },
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userContent }
+                    ]
+                })
+            });
+            if (!res.ok) throw new Error(`Mistral a répondu ${res.status} : ${(await res.text()).slice(0, 300)}`);
+            const data = await res.json();
+            const text = data?.choices?.[0]?.message?.content;
+            if (!text) throw new Error("Mistral n'a renvoyé aucun texte exploitable.");
+            return extractJsonFromText(text);
+        }
+
+        // --- Recommandations IA ---
+        const RECO_SYSTEM_PROMPT = `Tu es un moteur de recommandation de jeux vidéo expert. Analyse le profil ci-dessous (historique de jeux, styles, heures jouées, notes, dates). Évalue les risques et opportunités pour chaque suggestion (ex : profil avec peu de temps disponible, barrières visuelles sur le rétrogaming, lassitude d'un style trop pratiqué, découverte d'un style jamais essayé mais dans l'esprit de ce qui a plu, etc.).
+
+Ne recommande jamais un jeu déjà présent dans la collection.
+
+Réponds STRICTEMENT avec un JSON valide de la forme :
+{
+  "recommendations": [
+    {
+      "title": "Nom du jeu",
+      "match_score": 88,
+      "reason": "Courte explication (1-2 phrases) du score, mentionnant risques/opportunités.",
+      "info_url": "URL vers une fiche ou un trailer (site officiel ou YouTube si connu, sinon null)"
+    }
+  ]
+}
+Fournis exactement 10 entrées, triées par match_score décroissant.`;
+
+        const REFINE_SYSTEM_PROMPT = `Tu es un moteur de recommandation de jeux vidéo expert en train d'affiner une liste précédente à partir des retours de l'utilisateur.
+
+On te fournit : le profil du joueur (historique de jeux), la liste des 10 jeux précédemment proposés avec leur score initial, et le feedback de l'utilisateur sur chacun (ajustement de score, "le style visuel me déplaît", "déjà fait"), ainsi qu'une éventuelle précision en langage naturel.
+
+Recalibre ta logique à partir de ces retours (ex : si l'utilisateur met un malus sur un jeu à cause du temps réel, évite les jeux en temps réel dans la nouvelle liste ; si "déjà fait" est coché, exclus ce jeu et les jeux très similaires).
+
+Réponds STRICTEMENT avec un JSON valide de la même forme :
+{
+  "recommendations": [
+    {
+      "title": "Nom du jeu",
+      "match_score": 88,
+      "reason": "Courte explication (1-2 phrases), en tenant compte du feedback reçu.",
+      "info_url": "URL vers une fiche ou un trailer (site officiel ou YouTube si connu, sinon null)"
+    }
+  ]
+}
+Fournis exactement 10 entrées, triées par match_score décroissant.`;
+
+        // Schéma de tool-use forcé pour Claude, réutilisé pour la génération initiale et le raffinement.
+        const RECO_TOOL_SCHEMA = {
+            name: 'submit_recommendations',
+            description: "Soumets la liste de 10 jeux recommandés.",
+            input_schema: {
+                type: 'object',
+                properties: {
+                    recommendations: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                title: { type: 'string' },
+                                match_score: { type: 'integer' },
+                                reason: { type: 'string' },
+                                info_url: { type: ['string', 'null'] }
+                            },
+                            required: ['title', 'match_score', 'reason']
+                        }
+                    }
+                },
+                required: ['recommendations']
+            }
+        };
+
+        function saveRecommendations(list) {
+            db.run("DELETE FROM recommendations");
+            list.forEach(r => {
+                db.run(
+                    "INSERT INTO recommendations (title, match_score, reason, info_url) VALUES (?, ?, ?, ?)",
+                    [r.title, r.match_score, r.reason || '', r.info_url || null]
+                );
+            });
+            saveToLocalStorage();
+        }
+
+        function getRecommendations() {
+            const res = db.exec("SELECT id, title, match_score, reason, info_url, user_feedback_score, user_disliked_style, user_already_done FROM recommendations ORDER BY match_score DESC");
+            if (!res.length) return [];
+            return res[0].values.map(([id, title, matchScore, reason, infoUrl, userFeedbackScore, userDislikedStyle, userAlreadyDone]) => ({
+                id, title, matchScore, reason, infoUrl, userFeedbackScore, userDislikedStyle, userAlreadyDone
+            }));
+        }
+
+        function setRecommendationsLoading(isLoading, message) {
+            const btnReco = document.getElementById('btn-generate-recommendations');
+            const btnRefine = document.getElementById('btn-refine-recommendations');
+            if (btnReco) btnReco.disabled = isLoading;
+            if (btnRefine) btnRefine.disabled = isLoading;
+            const status = document.getElementById('recommendations-status');
+            if (status) status.textContent = isLoading ? (message || '⏳ Analyse en cours...') : '';
+        }
+
+        function showRecommendationsError(err) {
+            const container = document.getElementById('recommendations-container');
+            if (container) {
+                container.innerHTML = `<div class="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 text-sm text-rose-300">⚠️ ${escapeHtml(err.message || String(err))}</div>`;
+            }
+        }
+
+        async function generateRecommendations() {
+            const inventory = buildInventoryMarkdown();
+            if (!inventory) {
+                showRecommendationsError(new Error("Ta collection est vide : ajoute des jeux avant de demander des recommandations."));
+                return;
+            }
+            setRecommendationsLoading(true);
+            try {
+                const result = await callLLM(RECO_SYSTEM_PROMPT, inventory, RECO_TOOL_SCHEMA);
+                const list = result.recommendations || [];
+                if (!Array.isArray(list) || list.length === 0) throw new Error("Le LLM n'a renvoyé aucune recommandation exploitable.");
+                saveRecommendations(list);
+                renderRecommendations();
+            } catch (err) {
+                showRecommendationsError(err);
+            } finally {
+                setRecommendationsLoading(false);
+            }
+        }
+
+        async function refineRecommendations() {
+            const current = getRecommendations();
+            if (current.length === 0) {
+                showRecommendationsError(new Error("Génère d'abord une liste de recommandations avant de l'affiner."));
+                return;
+            }
+            const inventory = buildInventoryMarkdown() || '';
+            const globalFeedbackEl = document.getElementById('recommendations-global-feedback');
+            const globalFeedback = globalFeedbackEl ? globalFeedbackEl.value.trim() : '';
+
+            let feedbackBlock = "## Jeux précédemment proposés et feedback utilisateur\n\n";
+            current.forEach(r => {
+                const adjust = (r.userFeedbackScore !== null && r.userFeedbackScore !== undefined && r.userFeedbackScore != 0)
+                    ? ` | Ajustement utilisateur : ${r.userFeedbackScore > 0 ? '+' : ''}${r.userFeedbackScore}%`
+                    : '';
+                const flags = [
+                    r.userDislikedStyle ? "le style visuel déplaît à l'utilisateur" : null,
+                    r.userAlreadyDone ? "déjà fait par l'utilisateur (à exclure)" : null
+                ].filter(Boolean).join(', ');
+                feedbackBlock += `- **${r.title}** (score initial ${r.matchScore}%)${adjust}${flags ? ' | ' + flags : ''}\n`;
+            });
+            if (globalFeedback) {
+                feedbackBlock += `\n## Précision libre de l'utilisateur\n${globalFeedback}\n`;
+            }
+
+            const userContent = `${inventory}\n\n${feedbackBlock}`;
+
+            setRecommendationsLoading(true, '⏳ Recalibrage en cours...');
+            try {
+                const result = await callLLM(REFINE_SYSTEM_PROMPT, userContent, RECO_TOOL_SCHEMA);
+                const list = result.recommendations || [];
+                if (!Array.isArray(list) || list.length === 0) throw new Error("Le LLM n'a renvoyé aucune recommandation exploitable.");
+                saveRecommendations(list);
+                if (globalFeedbackEl) globalFeedbackEl.value = '';
+                renderRecommendations();
+            } catch (err) {
+                showRecommendationsError(err);
+            } finally {
+                setRecommendationsLoading(false);
+            }
+        }
+
+        function updateRecommendationFeedback(id, field, value) {
+            db.run(`UPDATE recommendations SET ${field} = ? WHERE id = ?`, [value, id]);
+            saveToLocalStorage();
+        }
+
+        function scoreColorClasses(score) {
+            if (score >= 70) return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+            if (score >= 40) return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+            return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+        }
+
+        function renderRecommendations() {
+            const container = document.getElementById('recommendations-container');
+            if (!container) return;
+            const list = getRecommendations();
+            if (list.length === 0) {
+                container.innerHTML = `<p class="text-slate-500 text-sm italic">Aucune recommandation pour le moment. Clique sur ✨ Recommander pour lancer une première analyse.</p>`;
+                return;
+            }
+
+            container.innerHTML = list.map(r => {
+                const scoreClasses = scoreColorClasses(r.matchScore);
+                const scoreIcon = r.matchScore >= 70 ? '🎯' : (r.matchScore >= 40 ? '📊' : '📉');
+                const linkHtml = r.infoUrl
+                    ? `<a href="${escapeHtml(r.infoUrl)}" target="_blank" rel="noopener" class="text-indigo-400 hover:text-indigo-300 text-xs font-medium">🔗 Voir la fiche</a>`
+                    : '';
+                const adjustedScore = r.userFeedbackScore ?? 0;
+                return `
+                    <div class="bg-slate-800 border ${scoreClasses.split(' ').find(c => c.startsWith('border-'))} rounded-xl p-4 space-y-3">
+                        <div class="flex items-start justify-between gap-2">
+                            <h4 class="font-semibold text-slate-100">${escapeHtml(r.title)}</h4>
+                            <span class="whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold border ${scoreClasses}">${scoreIcon} ${r.matchScore}%</span>
+                        </div>
+                        <p class="text-sm text-slate-400">${escapeHtml(r.reason || '')}</p>
+                        ${linkHtml}
+                        <div class="border-t border-slate-700 pt-3 space-y-2">
+                            <label class="text-xs text-slate-400 flex items-center justify-between">
+                                <span>Ajuster le score</span>
+                                <span id="reco-score-val-${r.id}" class="font-mono">${adjustedScore > 0 ? '+' : ''}${adjustedScore}%</span>
+                            </label>
+                            <input type="range" min="-100" max="100" value="${adjustedScore}"
+                                oninput="document.getElementById('reco-score-val-${r.id}').textContent = (this.value > 0 ? '+' : '') + this.value + '%'; updateRecommendationFeedback(${r.id}, 'user_feedback_score', parseInt(this.value, 10))"
+                                class="w-full accent-indigo-500">
+                            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                                <input type="checkbox" ${r.userDislikedStyle ? 'checked' : ''} class="accent-indigo-500"
+                                    onchange="updateRecommendationFeedback(${r.id}, 'user_disliked_style', this.checked ? 1 : 0)">
+                                Le style visuel me déplaît (-50%)
+                            </label>
+                            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                                <input type="checkbox" ${r.userAlreadyDone ? 'checked' : ''} class="accent-indigo-500"
+                                    onchange="updateRecommendationFeedback(${r.id}, 'user_already_done', this.checked ? 1 : 0)">
+                                Déjà fait
+                            </label>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- Configuration du fournisseur LLM ---
+        function openLlmSettingsModal() {
+            const provider = getLlmSetting('llm_provider') || 'gemini';
+            const providerOptions = [
+                ['gemini', 'Google Gemini'],
+                ['claude', 'Anthropic Claude'],
+                ['openai', 'OpenAI ChatGPT'],
+                ['mistral', 'Mistral AI']
+            ].map(([val, label]) => `<option value="${val}" ${val === provider ? 'selected' : ''}>${label}</option>`).join('');
+
+            const currentKey = getLlmSetting('llm_api_key_' + provider) || '';
+            const currentModel = getLlmSetting('llm_model_' + provider) || LLM_DEFAULT_MODELS[provider];
+
+            openModal(`
+                <h3 class="text-xl font-bold text-indigo-300 mb-4">⚙️ Configurer l'IA</h3>
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-xs text-slate-400">Fournisseur</label>
+                        <select id="llm-provider-select" onchange="reopenLlmSettingsModal(this.value)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">${providerOptions}</select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400">Clé API</label>
+                        <div class="flex gap-2">
+                            <input type="password" id="llm-api-key-input" value="${escapeHtml(currentKey)}" placeholder="Colle ta clé API ici" class="flex-1 bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono">
+                            <button onclick="document.getElementById('llm-api-key-input').value=''" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 rounded text-xs whitespace-nowrap">🗑️ Effacer</button>
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-1">⚠️ Ta clé API est stockée en clair dans le stockage local de ce navigateur. Ne l'utilise pas sur un ordinateur partagé ou public. Tu peux la révoquer à tout moment depuis la console du fournisseur.</p>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400">Modèle</label>
+                        <input type="text" id="llm-model-input" value="${escapeHtml(currentModel)}" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 mt-5">
+                    <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Annuler</button>
+                    <button onclick="saveLlmSettings()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm">Enregistrer</button>
+                </div>
+            `);
+        }
+        function reopenLlmSettingsModal(newProvider) {
+            setLlmSetting('llm_provider', newProvider);
+            openLlmSettingsModal();
+        }
+        function saveLlmSettings() {
+            const provider = document.getElementById('llm-provider-select').value;
+            const apiKey = document.getElementById('llm-api-key-input').value.trim();
+            const model = document.getElementById('llm-model-input').value.trim();
+            setLlmSetting('llm_provider', provider);
+            setLlmSetting('llm_api_key_' + provider, apiKey);
+            setLlmSetting('llm_model_' + provider, model || LLM_DEFAULT_MODELS[provider]);
+            closeModal();
+        }
+
+        // Dashboard de statistiques globales
+        function renderDashboard() {
+            const dash = document.getElementById('dashboard-stats');
+            const breakdown = document.getElementById('dashboard-breakdown');
+
+            const totalHoursRes = db.exec("SELECT COALESCE(SUM(hours),0) FROM games");
+            const totalHours = totalHoursRes.length ? totalHoursRes[0].values[0][0] : 0;
+            const totalGamesRes = db.exec("SELECT COUNT(*) FROM games");
+            const totalGames = totalGamesRes.length ? totalGamesRes[0].values[0][0] : 0;
+            const completedRes = db.exec("SELECT COUNT(*) FROM games WHERE completed=1");
+            const completedCount = completedRes.length ? completedRes[0].values[0][0] : 0;
+            const pct = totalGames > 0 ? Math.round((completedCount / totalGames) * 100) : 0;
+            const topGameRes = db.exec("SELECT title, hours FROM games ORDER BY hours DESC LIMIT 1");
+            const topGame = (topGameRes.length && topGameRes[0].values.length) ? topGameRes[0].values[0] : null;
+            const dbSizeBytes = db.export().length;
+
+            dash.innerHTML = `
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <p class="text-xs text-slate-400">Heures totales</p>
+                    <p class="text-2xl font-bold text-indigo-400">${totalHours} h</p>
+                    <p class="text-xs text-slate-500">≈ ${toDays(totalHours)} j (base ${hoursPerDay}h/j)</p>
+                </div>
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <p class="text-xs text-slate-400">Complétion</p>
+                    <p class="text-2xl font-bold text-emerald-400">${pct}%</p>
+                    <p class="text-xs text-slate-500">${completedCount}/${totalGames} jeux</p>
+                </div>
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <p class="text-xs text-slate-400">Jeu le + chronophage</p>
+                    <p class="text-lg font-bold text-amber-400 truncate">${topGame ? escapeHtml(topGame[0]) : '—'}</p>
+                    <p class="text-xs text-slate-500">${topGame ? topGame[1] + ' h' : ''}</p>
+                </div>
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <p class="text-xs text-slate-400">Collection</p>
+                    <p class="text-2xl font-bold text-slate-200">${totalGames}</p>
+                    <p class="text-xs text-slate-500">jeux enregistrés</p>
+                </div>
+                <div class="bg-slate-800 p-4 rounded-xl border ${dbSizeBytes > 4 * 1024 * 1024 ? 'border-amber-500/50' : 'border-slate-700'}">
+                    <p class="text-xs text-slate-400">Poids de la base</p>
+                    <p class="text-2xl font-bold ${dbSizeBytes > 4 * 1024 * 1024 ? 'text-amber-400' : 'text-slate-200'}">${formatBytes(dbSizeBytes)}</p>
+                    <p class="text-xs text-slate-500">${dbSizeBytes > 4 * 1024 * 1024 ? '⚠️ Pense à exporter le .sqlite' : 'stockage local'}</p>
+                </div>
+            `;
+
+            const famHoursRes = db.exec(`
+                SELECT f.name, COALESCE(SUM(g.hours),0) as h
+                FROM families f
+                LEFT JOIN consoles c ON c.family_id = f.id
+                LEFT JOIN games g ON g.console_id = c.id
+                GROUP BY f.id
+                ORDER BY h DESC
+            `);
+
+            if (famHoursRes.length > 0 && famHoursRes[0].values.length > 1 && totalHours > 0) {
+                const rows = famHoursRes[0].values;
+                const maxH = Math.max(...rows.map(r => r[1]), 1);
+                let barsHtml = `<div class="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-2"><p class="text-xs text-slate-400 mb-2">Répartition des heures par famille</p>`;
+                rows.forEach(([name, h]) => {
+                    const widthPct = Math.round((h / maxH) * 100);
+                    barsHtml += `
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-slate-300 w-28 truncate">${escapeHtml(name)}</span>
+                            <div class="flex-1 bg-slate-900 rounded-full h-3 overflow-hidden">
+                                <div class="bg-indigo-500 h-3 rounded-full" style="width:${widthPct}%"></div>
+                            </div>
+                            <span class="text-xs text-slate-400 font-mono w-24 text-right">${h} h <span class="text-slate-600">(${toDays(h)}j)</span></span>
+                        </div>
+                    `;
+                });
+                barsHtml += `</div>`;
+                breakdown.innerHTML = barsHtml;
+            } else {
+                breakdown.innerHTML = '';
+            }
+
+            renderGenreStats();
+            renderAgeGenreAnalysis();
+        }
+
+        // Répartition globale des heures par style de jeu (tags combinables : un jeu compte dans chacun de ses styles)
+        function renderGenreStats() {
+            const container = document.getElementById('dashboard-genre-stats');
+            if (!container) return;
+            const res = db.exec(`
+                SELECT g.name, COUNT(DISTINCT gg.game_id) as game_count, COALESCE(SUM(ga.hours),0) as total_hours
+                FROM genres g
+                LEFT JOIN game_genres gg ON gg.genre_id = g.id
+                LEFT JOIN games ga ON ga.id = gg.game_id
+                GROUP BY g.id
+                HAVING game_count > 0
+                ORDER BY total_hours DESC
+            `);
+            const rows = res.length ? res[0].values : [];
+            if (rows.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            const maxH = Math.max(...rows.map(r => r[2]), 1);
+            let html = `<div class="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-2">
+                <p class="text-xs text-slate-400 mb-2">🏷️ Répartition des heures par style de jeu</p>`;
+            rows.forEach(([name, count, hours]) => {
+                const widthPct = Math.round((hours / maxH) * 100);
+                html += `
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs text-slate-300 w-28 truncate">${escapeHtml(name)}</span>
+                        <div class="flex-1 bg-slate-900 rounded-full h-3 overflow-hidden">
+                            <div class="bg-fuchsia-500 h-3 rounded-full" style="width:${widthPct}%"></div>
+                        </div>
+                        <span class="text-xs text-slate-400 font-mono w-28 text-right">${hours} h <span class="text-slate-600">(${count} jeu${count > 1 ? 'x' : ''})</span></span>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        // Calcule, pour chaque tranche d'âge de 5 ans, la répartition des heures par style de jeu.
+        // Référence d'âge par jeu, par ordre de priorité :
+        //   1. Date de possession du jeu lui-même (la plus précise)
+        //   2. À défaut, date de possession de sa console (estimation)
+        //   3. À défaut, date d'ajout dans l'app (estimation, moins fiable)
+        // Un jeu daté avant la naissance renseignée est exclu et signalé (incohérence de saisie).
+        function computeAgeGenreStats() {
+            if (!userBirthdate) return null;
+            const birth = new Date(userBirthdate + 'T00:00:00');
+            if (isNaN(birth.getTime())) return null;
+
+            const gamesRes = db.exec("SELECT id, hours, console_id, date_added FROM games");
+            const games = gamesRes.length ? gamesRes[0].values : [];
+            if (games.length === 0) return null;
+
+            const genreLinksRes = db.exec("SELECT gg.game_id, g.name FROM game_genres gg JOIN genres g ON g.id = gg.genre_id");
+            const gameGenreNames = {};
+            if (genreLinksRes.length) {
+                genreLinksRes[0].values.forEach(([gameId, genreName]) => {
+                    if (!gameGenreNames[gameId]) gameGenreNames[gameId] = [];
+                    gameGenreNames[gameId].push(genreName);
+                });
+            }
+
+            const gamePeriodsRes = db.exec("SELECT game_id, MIN(date_start) FROM game_ownership_periods WHERE date_start IS NOT NULL GROUP BY game_id");
+            const gameEarliest = {};
+            if (gamePeriodsRes.length) gamePeriodsRes[0].values.forEach(([gid, d]) => { gameEarliest[gid] = d; });
+
+            const consolePeriodsRes = db.exec("SELECT console_id, MIN(date_start) FROM console_ownership_periods WHERE date_start IS NOT NULL GROUP BY console_id");
+            const consoleEarliest = {};
+            if (consolePeriodsRes.length) consolePeriodsRes[0].values.forEach(([cid, d]) => { consoleEarliest[cid] = d; });
+
+            const buckets = {};
+            let excludedCount = 0;
+            let estimatedCount = 0;
+
+            games.forEach(([gameId, hours, consoleId, dateAdded]) => {
+                let refDate = gameEarliest[gameId];
+                let estimated = false;
+                if (!refDate) { refDate = consoleEarliest[consoleId]; estimated = true; }
+                if (!refDate) { refDate = dateAdded; estimated = true; }
+                if (!refDate) return;
+
+                const ref = new Date(refDate + 'T00:00:00');
+                if (isNaN(ref.getTime())) return;
+
+                let age = ref.getFullYear() - birth.getFullYear();
+                const beforeBirthdayThisYear = (ref.getMonth() < birth.getMonth()) ||
+                    (ref.getMonth() === birth.getMonth() && ref.getDate() < birth.getDate());
+                if (beforeBirthdayThisYear) age -= 1;
+
+                if (age < 0) { excludedCount++; return; }
+                if (estimated) estimatedCount++;
+
+                const bucketStart = Math.floor(age / 5) * 5;
+                const label = `${bucketStart}-${bucketStart + 4} ans`;
+                if (!buckets[label]) buckets[label] = { start: bucketStart, totalHours: 0, genres: {} };
+                buckets[label].totalHours += hours;
+
+                const genresForGame = (gameGenreNames[gameId] && gameGenreNames[gameId].length) ? gameGenreNames[gameId] : ['Non taggé'];
+                genresForGame.forEach(gname => {
+                    buckets[label].genres[gname] = (buckets[label].genres[gname] || 0) + hours;
+                });
+            });
+
+            return { buckets, excludedCount, estimatedCount };
+        }
+
+        function renderAgeGenreAnalysis() {
+            const container = document.getElementById('dashboard-age-genre');
+            if (!container) return;
+
+            if (!userBirthdate) {
+                container.innerHTML = `
+                    <div class="bg-slate-800 p-4 rounded-xl border border-dashed border-slate-700 text-center">
+                        <p class="text-sm text-slate-400">🎂 Renseigne ta date de naissance (en haut) pour activer l'analyse "styles de jeu par âge".</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const stats = computeAgeGenreStats();
+            if (!stats || Object.keys(stats.buckets).length === 0) {
+                container.innerHTML = `
+                    <div class="bg-slate-800 p-4 rounded-xl border border-dashed border-slate-700 text-center">
+                        <p class="text-sm text-slate-400">Pas encore assez de données datées pour cette analyse. Ajoute des dates de possession sur tes jeux ou tes consoles.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const sortedLabels = Object.keys(stats.buckets).sort((a, b) => stats.buckets[a].start - stats.buckets[b].start);
+
+            let html = `<div class="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
+                <p class="text-xs text-slate-400">🎂 Styles de jeu par tranche d'âge</p>`;
+
+            sortedLabels.forEach(label => {
+                const bucket = stats.buckets[label];
+                const genreEntries = Object.entries(bucket.genres).sort((a, b) => b[1] - a[1]);
+                const maxGenreHours = Math.max(...genreEntries.map(e => e[1]), 1);
+
+                html += `<div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-sm font-semibold text-indigo-300">${label}</span>
+                        <span class="text-xs text-slate-500 font-mono">${bucket.totalHours} h</span>
+                    </div>
+                    <div class="space-y-1 pl-2 border-l-2 border-slate-700">`;
+
+                genreEntries.forEach(([gname, h]) => {
+                    const widthPct = Math.round((h / maxGenreHours) * 100);
+                    html += `
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-slate-400 w-28 truncate">${escapeHtml(gname)}</span>
+                            <div class="flex-1 bg-slate-900 rounded-full h-2.5 overflow-hidden">
+                                <div class="bg-emerald-500 h-2.5 rounded-full" style="width:${widthPct}%"></div>
+                            </div>
+                            <span class="text-xs text-slate-500 font-mono w-12 text-right">${h} h</span>
+                        </div>
+                    `;
+                });
+
+                html += `</div></div>`;
+            });
+
+            if (stats.estimatedCount > 0) {
+                html += `<p class="text-[10px] text-slate-500 italic">≈ ${stats.estimatedCount} jeu(x) sans date propre : âge estimé via la console ou la date d'ajout.</p>`;
+            }
+            if (stats.excludedCount > 0) {
+                html += `<p class="text-[10px] text-amber-500 italic">⚠️ ${stats.excludedCount} jeu(x) exclu(s) : date antérieure à la naissance renseignée.</p>`;
+            }
+
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        // Rendu de l'interface graphique globale
+        function render() {
+            const selectFamily = document.getElementById("console-family-select");
+            const selectConsole = document.getElementById("game-console");
+            const mainContainer = document.getElementById("main-container");
+
+            familiesCache = {};
+            consolesCache = {};
+            gamesCache = {};
+
+            renderDashboard();
+            renderRecommendations();
+
+            // Une seule requête agrégée pour éviter le N+1 (un jeu peut avoir plusieurs tags)
+            let gameGenresMap = {};
+            const genreLinksRes = db.exec("SELECT gg.game_id, g.name FROM game_genres gg JOIN genres g ON g.id = gg.genre_id ORDER BY g.name ASC");
+            if (genreLinksRes.length) {
+                genreLinksRes[0].values.forEach(([gameId, genreName]) => {
+                    if (!gameGenresMap[gameId]) gameGenresMap[gameId] = [];
+                    gameGenresMap[gameId].push(genreName);
+                });
+            }
+
+            selectFamily.innerHTML = '<option value="">-- Sélectionner la famille --</option>';
+            selectConsole.innerHTML = '<option value="">-- Sélectionner la console --</option>';
+
+            const familiesRes = db.exec("SELECT id, name FROM families ORDER BY name ASC");
+            if (familiesRes.length > 0 && familiesRes[0].values.length > 0) {
+                familiesRes[0].values.forEach(([id, name]) => {
+                    familiesCache[id] = name;
+                    const opt = document.createElement("option");
+                    opt.value = id;
+                    opt.textContent = name;
+                    selectFamily.appendChild(opt);
+                });
+            }
+
+            const consolesForSelect = db.exec(`
+                SELECT c.id, c.name, f.name
+                FROM consoles c
+                JOIN families f ON c.family_id = f.id
+                ORDER BY f.name ASC, c.name ASC
+            `);
+            if (consolesForSelect.length > 0 && consolesForSelect[0].values.length > 0) {
+                consolesForSelect[0].values.forEach(([cId, cName, fName]) => {
+                    const opt = document.createElement("option");
+                    opt.value = cId;
+                    opt.textContent = `[${fName}] ${cName}`;
+                    selectConsole.appendChild(opt);
+                });
+            }
+
+            if (familiesRes.length === 0 || familiesRes[0].values.length === 0) {
+                mainContainer.innerHTML = `<div class="text-center text-slate-500 py-10">Aucune donnée disponible. Commencez par créer une Famille de consoles !</div>`;
+                return;
+            }
+
+            mainContainer.innerHTML = "";
+            const filterActive = searchQuery !== "" || statusFilter !== "all";
+            let anyRendered = false;
+
+            const orderClause = sortBy === 'hours' ? "hours DESC"
+                : sortBy === 'rating' ? "rating DESC"
+                : sortBy === 'date' ? "date_added DESC"
+                : "title ASC";
+
+            familiesRes[0].values.forEach(([familyId, familyName]) => {
+                const consolesRes = db.exec("SELECT id, name, family_id FROM consoles WHERE family_id = ? ORDER BY name ASC", [familyId]);
+                const consolesRaw = (consolesRes.length > 0) ? consolesRes[0].values : [];
+
+                // Pré-calcul des jeux filtrés par console
+                const consolesWithGames = consolesRaw.map(([consoleId, consoleName]) => {
+                    consolesCache[consoleId] = { name: consoleName, familyId: familyId };
+
+                    let whereClauses = ["console_id = ?"];
+                    let params = [consoleId];
+                    if (searchQuery) {
+                        whereClauses.push("LOWER(title) LIKE ?");
+                        params.push(`%${searchQuery}%`);
+                    }
+                    if (statusFilter === 'completed') whereClauses.push("completed = 1");
+                    if (statusFilter === 'ongoing') whereClauses.push("completed = 0");
+
+                    const gamesRes = db.exec(
+                        `SELECT id, title, hours, completed, platform_type, rating, notes, date_added, date_completed, cover_front, cover_back
+                         FROM games WHERE ${whereClauses.join(' AND ')} ORDER BY ${orderClause}`,
+                        params
+                    );
+                    const games = (gamesRes.length > 0) ? gamesRes[0].values : [];
+                    return { consoleId, consoleName, games };
+                });
+
+                const visibleConsoles = filterActive
+                    ? consolesWithGames.filter(c => c.games.length > 0)
+                    : consolesWithGames;
+
+                if (filterActive && visibleConsoles.length === 0) return; // famille masquée si rien ne correspond
+
+                anyRendered = true;
+
+                const familySection = document.createElement("div");
+                familySection.className = "space-y-4";
+                familySection.innerHTML = `
+                    <div class="flex items-center justify-between border-b border-indigo-500/30 pb-2">
+                        <h2 class="text-2xl font-bold text-indigo-300">📁 Famille : ${escapeHtml(familyName)}</h2>
+                        <button onclick="editFamily(${familyId})" class="text-slate-400 hover:text-indigo-400 transition text-sm">✏️ Modifier</button>
+                    </div>
+                `;
+
+                const familyGrid = document.createElement("div");
+                familyGrid.className = "grid grid-cols-1 gap-6";
+                familySection.appendChild(familyGrid);
+
+                if (!filterActive && visibleConsoles.length === 0) {
+                    const p = document.createElement("p");
+                    p.className = "text-slate-500 text-sm italic pl-2";
+                    p.textContent = "Aucune console enregistrée dans cette famille.";
+                    familySection.appendChild(p);
+                }
+
+                visibleConsoles.forEach(({ consoleId, consoleName, games }) => {
+                    const card = document.createElement("div");
+                    card.className = "bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-lg";
+
+                    let cardHtml = `
+                        <div class="bg-slate-700/40 px-5 py-3 border-b border-slate-700 flex justify-between items-center">
+                            <h3 class="font-bold text-lg text-slate-200">🕹️ ${escapeHtml(consoleName)}</h3>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs bg-slate-900 px-2 py-1 rounded text-slate-400 font-mono">${games.length} jeu(x)</span>
+                                <button onclick="editConsole(${consoleId})" class="text-slate-400 hover:text-indigo-400 transition text-sm">✏️</button>
+                            </div>
+                        </div>
+                        <div class="p-4">
+                    `;
+
+                    if (games.length === 0) {
+                        cardHtml += `<p class="text-slate-500 text-sm italic">Aucun jeu sur cette machine.</p>`;
+                    } else {
+                        cardHtml += `
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left text-sm text-slate-300">
+                                    <thead class="text-xs uppercase bg-slate-900/50 text-slate-400 border-b border-slate-700">
+                                        <tr>
+                                            <th class="p-3"></th>
+                                            <th class="p-3">Jeu</th>
+                                            <th class="p-3 text-center">Support</th>
+                                            <th class="p-3 text-center">Temps</th>
+                                            <th class="p-3 text-center">Note</th>
+                                            <th class="p-3 text-center">Statut</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                        `;
+
+                        games.forEach(([gameId, title, hours, completed, platformType, rating, notes, dateAdded, dateCompleted, coverFront, coverBack]) => {
+                            gamesCache[gameId] = { title, hours, completed, platformType, rating, notes, dateCompleted, coverFront, coverBack };
+
+                            const platformIcon = platformType === 'Dématérialisé' ? '☁️' : '📀';
+                            const ratingDisplay = (rating !== null && rating !== undefined)
+                                ? `⭐ ${rating}/10`
+                                : '<span class="text-slate-600">—</span>';
+                            const notesIndicator = (notes && String(notes).trim())
+                                ? `<span title="${escapeHtml(notes)}" class="cursor-help">📝</span>`
+                                : '';
+                            const thumbHtml = coverFront
+                                ? `<img src="${coverFront}" class="w-10 h-10 object-cover rounded border border-slate-600">`
+                                : `<div class="w-10 h-10 rounded border border-slate-700 bg-slate-900 flex items-center justify-center text-slate-600 text-xs">🎮</div>`;
+                            const gameGenres = gameGenresMap[gameId] || [];
+                            const tagsHtml = gameGenres.length
+                                ? `<div class="flex flex-wrap gap-1 mt-1">${gameGenres.map(gn => `<span class="text-[10px] bg-slate-700/60 text-slate-300 px-1.5 py-0.5 rounded">${escapeHtml(gn)}</span>`).join('')}</div>`
+                                : '';
+
+                            cardHtml += `
+                                <tr class="border-b border-slate-700/50 hover:bg-slate-700/20 cursor-pointer" onclick="editGame(${gameId})">
+                                    <td class="p-3">${thumbHtml}</td>
+                                    <td class="p-3 font-medium text-slate-100">${escapeHtml(title)} ${notesIndicator}${tagsHtml}</td>
+                                    <td class="p-3 text-center">${platformIcon}</td>
+                                    <td class="p-3 text-center font-mono">
+                                        ${hours} h
+                                        <div class="text-[10px] text-slate-500 font-sans">≈ ${toDays(hours)} j</div>
+                                    </td>
+                                    <td class="p-3 text-center text-xs">${ratingDisplay}</td>
+                                    <td class="p-3 text-center">
+                                        ${completed
+                                            ? '<span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded-full text-xs font-semibold">✅ Terminé</span>'
+                                            : '<span class="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-0.5 rounded-full text-xs font-semibold">⏳ En cours</span>'}
+                                    </td>
+                                </tr>
+                            `;
+                        });
+
+                        cardHtml += `</tbody></table></div>`;
+                    }
+
+                    cardHtml += `</div>`;
+                    card.innerHTML = cardHtml;
+                    familyGrid.appendChild(card);
+                });
+
+                mainContainer.appendChild(familySection);
+            });
+
+            if (!anyRendered && filterActive) {
+                mainContainer.innerHTML = `<div class="text-center text-slate-500 py-10">Aucun résultat pour ces filtres.</div>`;
+            }
+        }
+
+        // Lancement au chargement de la page
+        initDB();
+    </script>
+</body>
+</html>
