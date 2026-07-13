@@ -14,7 +14,7 @@ Quatre fichiers chargés séquentiellement (balises `<script>` classiques, pas d
 
 1. `api.js` — doit être chargé en premier (définit `CLIENT_ID` et l'objet global `api`).
 2. `ws-client.js` — dépend de `CLIENT_ID` (défini dans `api.js`).
-3. `llm-ui.js` — dépend de `api`, `openModal`/`closeModal`/`escapeHtml` (définis dans `app.js`, donc **chargé avant** `app.js` mais les fonctions qu'il utilise sont hissées par le navigateur au moment de l'exécution effective des handlers, pas au chargement). Contient aussi `openConnectionsStatusModal()` — modale unique affichant l'état des connexions LLM et Steam, avec test à la demande (`POST /api/llm-settings/test-connection`, `POST /api/steam/test-connection`) sans jamais exposer de clé/credential.
+3. `llm-ui.js` — dépend de `api`, `openModal`/`closeModal`/`escapeHtml` (définis dans `app.js`, donc **chargé avant** `app.js` mais les fonctions qu'il utilise sont hissées par le navigateur au moment de l'exécution effective des handlers, pas au chargement). Contient aussi `openConnectionsStatusModal()` — modale unique affichant l'état des connexions LLM et Steam, avec test à la demande (`POST /api/llm-settings/test-connection`, `POST /api/steam/test-connection`) sans jamais exposer de clé/credential — et `openRecommendationsModal()`/`closeRecommendationsModal()`, qui affichent les recommandations IA dans leur propre modale (`#reco-modal-overlay`/`#reco-modal-body` dans `index.html`, plus large que la modale générique `#modal-overlay` pour la grille de cartes en 3 tiers).
 4. `app.js` — dernier chargé, appelle `initApp()` à la fin du fichier pour démarrer l'application.
 
 ## Index du Projet

@@ -176,30 +176,7 @@
                 <option value="date">Trier : Date d'ajout (récent)</option>
             </select>
             <button onclick="manageGenres()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">🏷️ Gérer les styles</button>
-        </div>
-
-        <!-- Recommandations IA -->
-        <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg space-y-4">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h2 class="text-xl font-semibold text-slate-200">🤖 Recommandations IA</h2>
-                    <p class="text-xs text-slate-400">Analyse ta collection et propose 9 jeux personnalisés en 3 tiers (Cœur de Cible, Périphérique, Exotique), avec un score de correspondance ajustable. Les jeux déjà proposés ne sont jamais repris.</p>
-                </div>
-                <div class="flex gap-2">
-                    <button onclick="openLlmSettingsModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">⚙️ Configurer l'IA</button>
-                    <button onclick="openRecommendationHistoryModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">📜 Historique</button>
-                    <button id="btn-generate-recommendations" onclick="generateRecommendations()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded whitespace-nowrap">✨ Recommander</button>
-                </div>
-            </div>
-            <p id="recommendations-status" class="text-xs text-indigo-300"></p>
-            <div id="recommendations-container" class="space-y-6">
-                <p class="text-slate-500 text-sm italic">Aucune recommandation pour le moment. Clique sur ✨ Recommander pour lancer une première analyse.</p>
-            </div>
-            <div class="border-t border-slate-700 pt-4 space-y-2">
-                <label class="text-xs text-slate-400">Autre précision (langage naturel, ex : "le jeu à 88% a l'air cool mais le temps réel me stresse en ce moment")</label>
-                <textarea id="recommendations-global-feedback" rows="2" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm"></textarea>
-                <button id="btn-refine-recommendations" onclick="refineRecommendations()" class="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm py-2 rounded font-medium">🔄 Affiner</button>
-            </div>
+            <button onclick="openRecommendationsModal()" class="bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm px-4 py-2 rounded whitespace-nowrap">🤖 Recommandations</button>
         </div>
 
         <div id="main-container" class="space-y-8">
@@ -211,6 +188,13 @@
     <div id="modal-overlay" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div class="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto p-6" onclick="event.stopPropagation()">
             <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Modal Recommandations IA (plus large que la modale générique, pour la grille de cartes) -->
+    <div id="reco-modal-overlay" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onclick="closeRecommendationsModal()">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto p-6" onclick="event.stopPropagation()">
+            <div id="reco-modal-body"></div>
         </div>
     </div>
 

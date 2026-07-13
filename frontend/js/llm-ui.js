@@ -112,6 +112,44 @@ async function clearRecommendationHistory() {
     openRecommendationHistoryModal();
 }
 
+// --- Modale Recommandations IA (contenu autrefois affiché en pleine page,
+// maintenant dans sa propre modale — voir #reco-modal-overlay/#reco-modal-body
+// dans index.html, plus large que la modale générique pour la grille de cartes) ---
+function openRecommendationsModal() {
+    document.getElementById('reco-modal-body').innerHTML = `
+        <div class="space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-200">🤖 Recommandations IA</h2>
+                    <p class="text-xs text-slate-400">Analyse ta collection et propose 9 jeux personnalisés en 3 tiers (Cœur de Cible, Périphérique, Exotique), avec un score de correspondance ajustable. Les jeux déjà proposés ne sont jamais repris.</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="openLlmSettingsModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">⚙️ Configurer l'IA</button>
+                    <button onclick="openRecommendationHistoryModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">📜 Historique</button>
+                    <button id="btn-generate-recommendations" onclick="generateRecommendations()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded whitespace-nowrap">✨ Recommander</button>
+                </div>
+            </div>
+            <p id="recommendations-status" class="text-xs text-indigo-300"></p>
+            <div id="recommendations-container" class="space-y-6">
+                <p class="text-slate-500 text-sm italic">Aucune recommandation pour le moment. Clique sur ✨ Recommander pour lancer une première analyse.</p>
+            </div>
+            <div class="border-t border-slate-700 pt-4 space-y-2">
+                <label class="text-xs text-slate-400">Autre précision (langage naturel, ex : "le jeu à 88% a l'air cool mais le temps réel me stresse en ce moment")</label>
+                <textarea id="recommendations-global-feedback" rows="2" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm"></textarea>
+                <button id="btn-refine-recommendations" onclick="refineRecommendations()" class="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm py-2 rounded font-medium">🔄 Affiner</button>
+            </div>
+            <div class="flex justify-end pt-2">
+                <button onclick="closeRecommendationsModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Fermer</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('reco-modal-overlay').classList.remove('hidden');
+    renderRecommendations();
+}
+function closeRecommendationsModal() {
+    document.getElementById('reco-modal-overlay').classList.add('hidden');
+}
+
 function setRecommendationsLoading(isLoading, message) {
     const btnReco = document.getElementById('btn-generate-recommendations');
     const btnRefine = document.getElementById('btn-refine-recommendations');

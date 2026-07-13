@@ -28,6 +28,8 @@ Identiques à l'ancienne version front-end : gestion de familles/consoles/jeux, 
 
 **Tri par console et repli** : chaque carte-console a son propre menu de tri (Titre/Heures/Note/Date d'ajout), indépendant du tri global, et peut être repliée/dépliée (clic sur son en-tête) pour alléger l'affichage sur une collection avec beaucoup de plateformes — les deux préférences sont mémorisées entre les sessions.
 
+**Recommandations dans une modale** : le bouton "🤖 Recommandations" (barre de recherche/filtres) ouvre une modale dédiée, plus large que la modale générique d'édition, pour la grille de cartes en 3 tiers.
+
 ## Index du Projet
 
 ```
