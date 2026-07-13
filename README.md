@@ -60,3 +60,7 @@ Dans la fiche d'édition d'un jeu, le bouton **🤖 Auto-détecter le style** de
 
 - **Export Markdown (.md)** : lisible par un humain, pratique pour partager ou archiver l'inventaire (n'inclut pas les images).
 - **Export SQLite (.sqlite)** : sauvegarde complète, incluant jaquettes et screenshots. À faire régulièrement, surtout si l'app t'avertit que le stockage local commence à être volumineux.
+
+## Licence
+
+Ce projet est distribué sous licence **[CC BY-NC 4.0](LICENSE)** (Creative Commons Attribution - Pas d'Utilisation Commerciale). Utilisation et modification libres et gratuites, à condition de créditer l'auteur original ; toute utilisation commerciale est interdite sans accord préalable.
