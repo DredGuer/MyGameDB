@@ -175,7 +175,7 @@
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h2 class="text-xl font-semibold text-slate-200">🤖 Recommandations IA</h2>
-                    <p class="text-xs text-slate-400">Analyse ta collection et propose 10 jeux personnalisés, avec un score de correspondance ajustable.</p>
+                    <p class="text-xs text-slate-400">Analyse ta collection et propose 9 jeux personnalisés en 3 tiers (Cœur de Cible, Périphérique, Exotique), avec un score de correspondance ajustable. Les jeux déjà proposés ne sont jamais repris.</p>
                 </div>
                 <div class="flex gap-2">
                     <button onclick="openLlmSettingsModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">⚙️ Configurer l'IA</button>
@@ -183,7 +183,7 @@
                 </div>
             </div>
             <p id="recommendations-status" class="text-xs text-indigo-300"></p>
-            <div id="recommendations-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div id="recommendations-container" class="space-y-6">
                 <p class="text-slate-500 text-sm italic">Aucune recommandation pour le moment. Clique sur ✨ Recommander pour lancer une première analyse.</p>
             </div>
             <div class="border-t border-slate-700 pt-4 space-y-2">
@@ -341,9 +341,16 @@
                     match_score INTEGER NOT NULL,
                     reason TEXT,
                     info_url TEXT,
+                    category TEXT,
                     user_feedback_score INTEGER,
                     user_disliked_style INTEGER DEFAULT 0,
                     user_already_done INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS recommendation_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    match_score INTEGER,
                     created_at TEXT DEFAULT (datetime('now'))
                 );
             `);
@@ -426,14 +433,24 @@
                         match_score INTEGER NOT NULL,
                         reason TEXT,
                         info_url TEXT,
+                        category TEXT,
                         user_feedback_score INTEGER,
                         user_disliked_style INTEGER DEFAULT 0,
                         user_already_done INTEGER DEFAULT 0,
                         created_at TEXT DEFAULT (datetime('now'))
                     );
+                    CREATE TABLE IF NOT EXISTS recommendation_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        match_score INTEGER,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    );
                 `);
                 seedDefaultGenres();
             } catch(e) {}
+            try {
+                db.run("ALTER TABLE recommendations ADD COLUMN category TEXT");
+            } catch(e) { /* colonne déjà existante */ }
             try {
                 db.run("UPDATE games SET date_added = date('now') WHERE date_added IS NULL");
             } catch(e) {}
@@ -1428,9 +1445,19 @@
         }
 
         // --- Recommandations IA ---
+        // Matrice de recommandation en 3 tiers, sur 9 jeux : 4 "Cœur de Cible" (certitude forte),
+        // 2 "Périphérique" (certitude moyenne), 3 "Exotique Hors Cadre" (rupture assumée).
+        const RECO_MATRIX_SPEC = `Structure ta liste de 9 jeux selon cette matrice en 3 tiers, en utilisant EXACTEMENT ces valeurs pour le champ "category" :
+
+1. "coeur_de_cible" (4 jeux — "Les Yeux Fermés") : alignement parfait avec les jeux notés 9 ou 10/10 et les mécaniques favorites du joueur. But : valider la confiance ("l'application me connaît par cœur"). Score attendu : 80-98%.
+2. "peripherique" (2 jeux — "Les Challengers") : des genres appréciés mais avec un twist qui fait hésiter (ex : excellent jeu du même genre mais graphismes plus anciens, ou mécanique proche mais structure différente comme du free-to-play/gacha). But : tester les frontières. Score attendu : 55-75%.
+3. "exotique" (3 jeux — "La Tangente") : rupture totale avec l'historique (autre genre complètement différent), mais des chefs-d'œuvre acclamés qui partagent une "philosophie" invisible avec le joueur (ex : l'art d'optimiser, la liberté guidée). But : provoquer la surprise, le coup de foudre inattendu. Score attendu : 40-65% (le score reflète l'écart au profil habituel, pas la qualité du jeu).`;
+
         const RECO_SYSTEM_PROMPT = `Tu es un moteur de recommandation de jeux vidéo expert. Analyse le profil ci-dessous (historique de jeux, styles, heures jouées, notes, dates). Évalue les risques et opportunités pour chaque suggestion (ex : profil avec peu de temps disponible, barrières visuelles sur le rétrogaming, lassitude d'un style trop pratiqué, découverte d'un style jamais essayé mais dans l'esprit de ce qui a plu, etc.).
 
-Ne recommande jamais un jeu déjà présent dans la collection.
+Ne recommande jamais un jeu déjà présent dans la collection, ni un jeu déjà proposé précédemment (liste fournie plus bas si applicable).
+
+${RECO_MATRIX_SPEC}
 
 Réponds STRICTEMENT avec un JSON valide de la forme :
 {
@@ -1438,18 +1465,21 @@ Réponds STRICTEMENT avec un JSON valide de la forme :
     {
       "title": "Nom du jeu",
       "match_score": 88,
+      "category": "coeur_de_cible",
       "reason": "Courte explication (1-2 phrases) du score, mentionnant risques/opportunités.",
       "info_url": "URL vers une fiche ou un trailer (site officiel ou YouTube si connu, sinon null)"
     }
   ]
 }
-Fournis exactement 10 entrées, triées par match_score décroissant.`;
+Fournis exactement 9 entrées : 4 "coeur_de_cible", 2 "peripherique", 3 "exotique". Trie-les par category puis par match_score décroissant à l'intérieur de chaque category.`;
 
         const REFINE_SYSTEM_PROMPT = `Tu es un moteur de recommandation de jeux vidéo expert en train d'affiner une liste précédente à partir des retours de l'utilisateur.
 
-On te fournit : le profil du joueur (historique de jeux), la liste des 10 jeux précédemment proposés avec leur score initial, et le feedback de l'utilisateur sur chacun (ajustement de score, "le style visuel me déplaît", "déjà fait"), ainsi qu'une éventuelle précision en langage naturel.
+On te fournit : le profil du joueur (historique de jeux), la liste des 9 jeux précédemment proposés avec leur score et leur catégorie, le feedback de l'utilisateur sur chacun (ajustement de score, "le style visuel me déplaît", "déjà fait"), ainsi qu'une éventuelle précision en langage naturel, et la liste de tous les jeux déjà proposés lors de sessions antérieures (à ne jamais reproposer).
 
 Recalibre ta logique à partir de ces retours (ex : si l'utilisateur met un malus sur un jeu à cause du temps réel, évite les jeux en temps réel dans la nouvelle liste ; si "déjà fait" est coché, exclus ce jeu et les jeux très similaires).
+
+${RECO_MATRIX_SPEC}
 
 Réponds STRICTEMENT avec un JSON valide de la même forme :
 {
@@ -1457,17 +1487,18 @@ Réponds STRICTEMENT avec un JSON valide de la même forme :
     {
       "title": "Nom du jeu",
       "match_score": 88,
+      "category": "coeur_de_cible",
       "reason": "Courte explication (1-2 phrases), en tenant compte du feedback reçu.",
       "info_url": "URL vers une fiche ou un trailer (site officiel ou YouTube si connu, sinon null)"
     }
   ]
 }
-Fournis exactement 10 entrées, triées par match_score décroissant.`;
+Fournis exactement 9 entrées : 4 "coeur_de_cible", 2 "peripherique", 3 "exotique". Trie-les par category puis par match_score décroissant à l'intérieur de chaque category. Ne reprends jamais un titre déjà présent dans l'historique fourni.`;
 
         // Schéma de tool-use forcé pour Claude, réutilisé pour la génération initiale et le raffinement.
         const RECO_TOOL_SCHEMA = {
             name: 'submit_recommendations',
-            description: "Soumets la liste de 10 jeux recommandés.",
+            description: "Soumets la liste de 9 jeux recommandés, répartis en 3 catégories.",
             input_schema: {
                 type: 'object',
                 properties: {
@@ -1478,10 +1509,11 @@ Fournis exactement 10 entrées, triées par match_score décroissant.`;
                             properties: {
                                 title: { type: 'string' },
                                 match_score: { type: 'integer' },
+                                category: { type: 'string', enum: ['coeur_de_cible', 'peripherique', 'exotique'] },
                                 reason: { type: 'string' },
                                 info_url: { type: ['string', 'null'] }
                             },
-                            required: ['title', 'match_score', 'reason']
+                            required: ['title', 'match_score', 'category', 'reason']
                         }
                     }
                 },
@@ -1489,23 +1521,48 @@ Fournis exactement 10 entrées, triées par match_score décroissant.`;
             }
         };
 
+        const RECO_CATEGORY_META = {
+            coeur_de_cible: { label: '🔥 Le Cœur de Cible', subtitle: 'Les Yeux Fermés — alignement parfait avec tes goûts', order: 0 },
+            peripherique:   { label: '🌤️ Le Périphérique', subtitle: 'Les Challengers — un twist qui teste tes limites', order: 1 },
+            exotique:       { label: '🌀 L\'Exotique Hors Cadre', subtitle: 'La Tangente — rupture assumée, coup de foudre potentiel', order: 2 }
+        };
+
+        // Persiste la liste courante ET archive chaque jeu dans l'historique permanent
+        // (recommendation_history), pour que le LLM ne les reproposé jamais lors des sessions futures.
         function saveRecommendations(list) {
             db.run("DELETE FROM recommendations");
             list.forEach(r => {
+                const category = RECO_CATEGORY_META[r.category] ? r.category : null;
                 db.run(
-                    "INSERT INTO recommendations (title, match_score, reason, info_url) VALUES (?, ?, ?, ?)",
-                    [r.title, r.match_score, r.reason || '', r.info_url || null]
+                    "INSERT INTO recommendations (title, match_score, reason, info_url, category) VALUES (?, ?, ?, ?, ?)",
+                    [r.title, r.match_score, r.reason || '', r.info_url || null, category]
+                );
+                db.run(
+                    "INSERT INTO recommendation_history (title, match_score) VALUES (?, ?)",
+                    [r.title, r.match_score]
                 );
             });
             saveToLocalStorage();
         }
 
         function getRecommendations() {
-            const res = db.exec("SELECT id, title, match_score, reason, info_url, user_feedback_score, user_disliked_style, user_already_done FROM recommendations ORDER BY match_score DESC");
+            const res = db.exec("SELECT id, title, match_score, reason, info_url, category, user_feedback_score, user_disliked_style, user_already_done FROM recommendations ORDER BY match_score DESC");
             if (!res.length) return [];
-            return res[0].values.map(([id, title, matchScore, reason, infoUrl, userFeedbackScore, userDislikedStyle, userAlreadyDone]) => ({
-                id, title, matchScore, reason, infoUrl, userFeedbackScore, userDislikedStyle, userAlreadyDone
+            return res[0].values.map(([id, title, matchScore, reason, infoUrl, category, userFeedbackScore, userDislikedStyle, userAlreadyDone]) => ({
+                id, title, matchScore, reason, infoUrl, category, userFeedbackScore, userDislikedStyle, userAlreadyDone
             }));
+        }
+
+        // Historique permanent des titres déjà proposés (toutes sessions confondues), envoyé au LLM
+        // pour qu'il évite de reproposer les mêmes jeux.
+        function getRecommendationHistoryMarkdown() {
+            const res = db.exec("SELECT DISTINCT title, match_score FROM recommendation_history ORDER BY created_at DESC");
+            if (!res.length || !res[0].values.length) return '';
+            let md = "## Jeux déjà proposés lors de sessions précédentes (ne pas reproposer)\n\n";
+            res[0].values.forEach(([title, score]) => {
+                md += `- ${title}${(score !== null && score !== undefined) ? ` (score ${score}%)` : ''}\n`;
+            });
+            return md;
         }
 
         function setRecommendationsLoading(isLoading, message) {
@@ -1530,9 +1587,12 @@ Fournis exactement 10 entrées, triées par match_score décroissant.`;
                 showRecommendationsError(new Error("Ta collection est vide : ajoute des jeux avant de demander des recommandations."));
                 return;
             }
+            const history = getRecommendationHistoryMarkdown();
+            const userContent = history ? `${inventory}\n\n${history}` : inventory;
+
             setRecommendationsLoading(true);
             try {
-                const result = await callLLM(RECO_SYSTEM_PROMPT, inventory, RECO_TOOL_SCHEMA);
+                const result = await callLLM(RECO_SYSTEM_PROMPT, userContent, RECO_TOOL_SCHEMA);
                 const list = result.recommendations || [];
                 if (!Array.isArray(list) || list.length === 0) throw new Error("Le LLM n'a renvoyé aucune recommandation exploitable.");
                 saveRecommendations(list);
@@ -1551,11 +1611,13 @@ Fournis exactement 10 entrées, triées par match_score décroissant.`;
                 return;
             }
             const inventory = buildInventoryMarkdown() || '';
+            const history = getRecommendationHistoryMarkdown();
             const globalFeedbackEl = document.getElementById('recommendations-global-feedback');
             const globalFeedback = globalFeedbackEl ? globalFeedbackEl.value.trim() : '';
 
             let feedbackBlock = "## Jeux précédemment proposés et feedback utilisateur\n\n";
             current.forEach(r => {
+                const categoryLabel = RECO_CATEGORY_META[r.category] ? RECO_CATEGORY_META[r.category].label : '';
                 const adjust = (r.userFeedbackScore !== null && r.userFeedbackScore !== undefined && r.userFeedbackScore != 0)
                     ? ` | Ajustement utilisateur : ${r.userFeedbackScore > 0 ? '+' : ''}${r.userFeedbackScore}%`
                     : '';
@@ -1563,13 +1625,13 @@ Fournis exactement 10 entrées, triées par match_score décroissant.`;
                     r.userDislikedStyle ? "le style visuel déplaît à l'utilisateur" : null,
                     r.userAlreadyDone ? "déjà fait par l'utilisateur (à exclure)" : null
                 ].filter(Boolean).join(', ');
-                feedbackBlock += `- **${r.title}** (score initial ${r.matchScore}%)${adjust}${flags ? ' | ' + flags : ''}\n`;
+                feedbackBlock += `- **${r.title}** (${categoryLabel}, score initial ${r.matchScore}%)${adjust}${flags ? ' | ' + flags : ''}\n`;
             });
             if (globalFeedback) {
                 feedbackBlock += `\n## Précision libre de l'utilisateur\n${globalFeedback}\n`;
             }
 
-            const userContent = `${inventory}\n\n${feedbackBlock}`;
+            const userContent = `${inventory}\n\n${feedbackBlock}${history ? '\n\n' + history : ''}`;
 
             setRecommendationsLoading(true, '⏳ Recalibrage en cours...');
             try {
@@ -1597,6 +1659,47 @@ Fournis exactement 10 entrées, triées par match_score décroissant.`;
             return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
         }
 
+        function recommendationCardHtml(r) {
+            const scoreClasses = scoreColorClasses(r.matchScore);
+            const scoreIcon = r.matchScore >= 70 ? '🎯' : (r.matchScore >= 40 ? '📊' : '📉');
+            const linkHtml = r.infoUrl
+                ? `<a href="${escapeHtml(r.infoUrl)}" target="_blank" rel="noopener" class="text-indigo-400 hover:text-indigo-300 text-xs font-medium">🔗 Voir la fiche</a>`
+                : '';
+            const adjustedScore = r.userFeedbackScore ?? 0;
+            return `
+                <div class="bg-slate-800 border ${scoreClasses.split(' ').find(c => c.startsWith('border-'))} rounded-xl p-4 space-y-3">
+                    <div class="flex items-start justify-between gap-2">
+                        <h4 class="font-semibold text-slate-100">${escapeHtml(r.title)}</h4>
+                        <span class="whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold border ${scoreClasses}">${scoreIcon} ${r.matchScore}%</span>
+                    </div>
+                    <p class="text-sm text-slate-400">${escapeHtml(r.reason || '')}</p>
+                    ${linkHtml}
+                    <div class="border-t border-slate-700 pt-3 space-y-2">
+                        <label class="text-xs text-slate-400 flex items-center justify-between">
+                            <span>Ajuster le score</span>
+                            <span id="reco-score-val-${r.id}" class="font-mono">${adjustedScore > 0 ? '+' : ''}${adjustedScore}%</span>
+                        </label>
+                        <input type="range" min="-100" max="100" value="${adjustedScore}"
+                            oninput="document.getElementById('reco-score-val-${r.id}').textContent = (this.value > 0 ? '+' : '') + this.value + '%'; updateRecommendationFeedback(${r.id}, 'user_feedback_score', parseInt(this.value, 10))"
+                            class="w-full accent-indigo-500">
+                        <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                            <input type="checkbox" ${r.userDislikedStyle ? 'checked' : ''} class="accent-indigo-500"
+                                onchange="updateRecommendationFeedback(${r.id}, 'user_disliked_style', this.checked ? 1 : 0)">
+                            Le style visuel me déplaît (-50%)
+                        </label>
+                        <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                            <input type="checkbox" ${r.userAlreadyDone ? 'checked' : ''} class="accent-indigo-500"
+                                onchange="updateRecommendationFeedback(${r.id}, 'user_already_done', this.checked ? 1 : 0)">
+                            Déjà fait
+                        </label>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Affiche les recommandations groupées en 3 sections selon la matrice Cœur de Cible /
+        // Périphérique / Exotique. Les jeux sans category reconnue (anciennes données, fallback LLM)
+        // tombent dans une section générique en fin de liste.
         function renderRecommendations() {
             const container = document.getElementById('recommendations-container');
             if (!container) return;
@@ -1606,43 +1709,39 @@ Fournis exactement 10 entrées, triées par match_score décroissant.`;
                 return;
             }
 
-            container.innerHTML = list.map(r => {
-                const scoreClasses = scoreColorClasses(r.matchScore);
-                const scoreIcon = r.matchScore >= 70 ? '🎯' : (r.matchScore >= 40 ? '📊' : '📉');
-                const linkHtml = r.infoUrl
-                    ? `<a href="${escapeHtml(r.infoUrl)}" target="_blank" rel="noopener" class="text-indigo-400 hover:text-indigo-300 text-xs font-medium">🔗 Voir la fiche</a>`
-                    : '';
-                const adjustedScore = r.userFeedbackScore ?? 0;
-                return `
-                    <div class="bg-slate-800 border ${scoreClasses.split(' ').find(c => c.startsWith('border-'))} rounded-xl p-4 space-y-3">
-                        <div class="flex items-start justify-between gap-2">
-                            <h4 class="font-semibold text-slate-100">${escapeHtml(r.title)}</h4>
-                            <span class="whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold border ${scoreClasses}">${scoreIcon} ${r.matchScore}%</span>
+            const groups = { coeur_de_cible: [], peripherique: [], exotique: [], _autre: [] };
+            list.forEach(r => {
+                (groups[r.category] || groups._autre).push(r);
+            });
+
+            let html = '';
+            ['coeur_de_cible', 'peripherique', 'exotique'].forEach(cat => {
+                if (groups[cat].length === 0) return;
+                const meta = RECO_CATEGORY_META[cat];
+                html += `
+                    <div class="space-y-3">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-100">${meta.label} <span class="text-xs font-normal text-slate-500">(${groups[cat].length} jeu${groups[cat].length > 1 ? 'x' : ''})</span></h3>
+                            <p class="text-xs text-slate-500">${meta.subtitle}</p>
                         </div>
-                        <p class="text-sm text-slate-400">${escapeHtml(r.reason || '')}</p>
-                        ${linkHtml}
-                        <div class="border-t border-slate-700 pt-3 space-y-2">
-                            <label class="text-xs text-slate-400 flex items-center justify-between">
-                                <span>Ajuster le score</span>
-                                <span id="reco-score-val-${r.id}" class="font-mono">${adjustedScore > 0 ? '+' : ''}${adjustedScore}%</span>
-                            </label>
-                            <input type="range" min="-100" max="100" value="${adjustedScore}"
-                                oninput="document.getElementById('reco-score-val-${r.id}').textContent = (this.value > 0 ? '+' : '') + this.value + '%'; updateRecommendationFeedback(${r.id}, 'user_feedback_score', parseInt(this.value, 10))"
-                                class="w-full accent-indigo-500">
-                            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                                <input type="checkbox" ${r.userDislikedStyle ? 'checked' : ''} class="accent-indigo-500"
-                                    onchange="updateRecommendationFeedback(${r.id}, 'user_disliked_style', this.checked ? 1 : 0)">
-                                Le style visuel me déplaît (-50%)
-                            </label>
-                            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                                <input type="checkbox" ${r.userAlreadyDone ? 'checked' : ''} class="accent-indigo-500"
-                                    onchange="updateRecommendationFeedback(${r.id}, 'user_already_done', this.checked ? 1 : 0)">
-                                Déjà fait
-                            </label>
+                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            ${groups[cat].map(recommendationCardHtml).join('')}
                         </div>
                     </div>
                 `;
-            }).join('');
+            });
+            if (groups._autre.length > 0) {
+                html += `
+                    <div class="space-y-3">
+                        <h3 class="text-lg font-bold text-slate-100">🎲 Autres suggestions</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            ${groups._autre.map(recommendationCardHtml).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
         }
 
         // --- Configuration du fournisseur LLM ---
