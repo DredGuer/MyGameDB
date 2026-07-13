@@ -30,6 +30,8 @@ Identiques à l'ancienne version front-end : gestion de familles/consoles/jeux, 
 
 **Recommandations dans une modale** : le bouton "🤖 Recommandations" (barre de recherche/filtres) ouvre une modale dédiée, plus large que la modale générique d'édition, pour la grille de cartes en 3 tiers.
 
+**Identité visuelle** : palette maison (encre teinté violet plutôt que le slate neutre de Tailwind, accent violet plus saturé que l'indigo par défaut, touche or pour les jaquettes) définie via `tailwind.config` inline dans `index.html` — remappe les palettes `slate`/`indigo`/`emerald`/`amber`/`rose`/`fuchsia` utilisées partout dans le JS, sans avoir à changer une seule classe. Les chiffres clés (heures, notes, stats) utilisent Space Mono (inlinée en `@font-face` base64, pas de dépendance CDN) avec `tabular-nums`. Le dashboard met en avant une tuile héro "Heures totales" plutôt que 5 tuiles au poids identique, avec une pastille "🎮 En ce moment" qui affiche la dernière instance jeu+plateforme touchée (`recentActivity` dans `GET /api/dashboard/stats`). Chaque ligne de jeu porte un liseré de couleur sur son bord gauche reflétant son statut (terminé/en cours), lisible même en scroll horizontal.
+
 ## Index du Projet
 
 ```

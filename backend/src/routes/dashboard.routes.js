@@ -17,6 +17,18 @@ router.get('/stats', asyncHandler(async (req, res) => {
         GROUP BY g.id ORDER BY hours DESC LIMIT 1
     `).get() || null;
 
+    // "En ce moment" : dernière instance touchée (ajoutée ou complétée),
+    // toutes plateformes confondues — sert de repère rapide "qu'est-ce que
+    // j'ai fait en dernier ?" sans avoir à parcourir toutes les consoles.
+    const recentActivity = db.prepare(`
+        SELECT g.title, c.name as console_name, gp.completed,
+               COALESCE(gp.date_completed, gp.date_added) as activity_date
+        FROM game_platforms gp
+        JOIN games g ON g.id = gp.game_id
+        JOIN consoles c ON c.id = gp.console_id
+        ORDER BY activity_date DESC, gp.id DESC LIMIT 1
+    `).get() || null;
+
     let dbSizeBytes = 0;
     try { dbSizeBytes = fs.statSync(DB_PATH).size; } catch (e) { /* fichier pas encore créé */ }
 
@@ -27,6 +39,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
             completedCount,
             completionPct: totalGames > 0 ? Math.round((completedCount / totalGames) * 100) : 0,
             topGame,
+            recentActivity,
             dbSizeBytes
         }
     });

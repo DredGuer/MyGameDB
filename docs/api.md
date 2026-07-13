@@ -114,7 +114,7 @@ Fichiers servis statiquement via `GET /uploads/covers/:filename` et `GET /upload
 
 | Méthode | Chemin | Description |
 |---|---|---|
-| GET | `/api/dashboard/stats` | Heures totales, % complétion, jeu le plus chronophage, poids de la base |
+| GET | `/api/dashboard/stats` | Heures totales, % complétion, jeu le plus chronophage, poids de la base, `recentActivity` (dernière instance jeu+plateforme touchée : titre, console, statut) |
 | GET | `/api/dashboard/breakdown/families` | Heures par famille |
 | GET | `/api/dashboard/breakdown/genres` | Heures/comptage par genre |
 | GET | `/api/dashboard/age-genre-analysis` | Analyse "styles par tranche d'âge" (nécessite une date de naissance renseignée) |

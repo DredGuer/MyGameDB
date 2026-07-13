@@ -729,32 +729,53 @@ async function renderDashboard() {
     const breakdown = document.getElementById('dashboard-breakdown');
 
     const stats = await api.getDashboardStats();
+    const heavyStorage = stats.dbSizeBytes > 4 * 1024 * 1024;
 
+    // Pastille "En ce moment" : dernière instance touchée (ajoutée ou
+    // complétée), toutes plateformes confondues — un repère rapide façon
+    // "quelle cartouche est encore dans la console", pas un simple total.
+    const recent = stats.recentActivity;
+    const recentBadge = recent ? `
+        <div class="flex items-center gap-2.5 rounded-full bg-slate-900/60 border border-indigo-500/30 pl-1 pr-4 py-1 w-fit">
+            <span class="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-500/15 text-sm">🎮</span>
+            <div class="leading-tight">
+                <p class="text-[10px] uppercase tracking-wider text-indigo-300/80 font-semibold">En ce moment</p>
+                <p class="text-xs text-slate-200"><span class="font-semibold">${escapeHtml(recent.title)}</span> <span class="text-slate-500">·</span> ${escapeHtml(recent.console_name)} ${recent.completed ? '· ✅' : ''}</p>
+            </div>
+        </div>
+    ` : '';
+
+    // Hiérarchie en deux niveaux : une tuile héro (heures totales, le vrai
+    // chiffre qui résume "combien j'ai joué") + une grille de tuiles
+    // secondaires plus discrètes, au lieu de 5 tuiles au poids identique.
     dash.innerHTML = `
-        <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-            <p class="text-xs text-slate-400">Heures totales</p>
-            <p class="text-2xl font-bold text-indigo-400">${stats.totalHours} h</p>
-            <p class="text-xs text-slate-500">≈ ${toDays(stats.totalHours)} j (base ${hoursPerDay}h/j)</p>
+        <div class="md:col-span-2 bg-gradient-to-br from-indigo-600/20 via-slate-800 to-slate-800 p-5 rounded-2xl border border-indigo-500/30 flex flex-col justify-between gap-3">
+            <div>
+                <p class="text-xs text-indigo-300/80 uppercase tracking-wider font-semibold">Heures totales</p>
+                <p class="font-mono text-4xl font-bold text-white tabular-nums leading-tight">${stats.totalHours}<span class="text-lg text-indigo-300/70 ml-1">h</span></p>
+                <p class="text-xs text-slate-400 mt-1">≈ ${toDays(stats.totalHours)} j de jeu (base ${hoursPerDay}h/j)</p>
+            </div>
+            ${recentBadge}
         </div>
         <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
             <p class="text-xs text-slate-400">Complétion</p>
-            <p class="text-2xl font-bold text-emerald-400">${stats.completionPct}%</p>
+            <p class="font-mono text-2xl font-bold text-emerald-400 tabular-nums">${stats.completionPct}%</p>
             <p class="text-xs text-slate-500">${stats.completedCount}/${stats.totalGames} jeux</p>
         </div>
         <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
             <p class="text-xs text-slate-400">Jeu le + chronophage</p>
-            <p class="text-lg font-bold text-amber-400 truncate">${stats.topGame ? escapeHtml(stats.topGame.title) : '—'}</p>
-            <p class="text-xs text-slate-500">${stats.topGame ? stats.topGame.hours + ' h' : ''}</p>
+            <p class="text-base font-bold text-amber-400 truncate">${stats.topGame ? escapeHtml(stats.topGame.title) : '—'}</p>
+            <p class="text-xs text-slate-500 font-mono">${stats.topGame ? stats.topGame.hours + ' h' : ''}</p>
         </div>
         <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
             <p class="text-xs text-slate-400">Collection</p>
-            <p class="text-2xl font-bold text-slate-200">${stats.totalGames}</p>
+            <p class="font-mono text-2xl font-bold text-slate-200 tabular-nums">${stats.totalGames}</p>
             <p class="text-xs text-slate-500">jeux enregistrés</p>
         </div>
-        <div class="bg-slate-800 p-4 rounded-xl border ${stats.dbSizeBytes > 4 * 1024 * 1024 ? 'border-amber-500/50' : 'border-slate-700'}">
+        <div class="bg-slate-800 p-4 rounded-xl border ${heavyStorage ? 'border-amber-500/50' : 'border-slate-700'}">
             <p class="text-xs text-slate-400">Poids de la base</p>
-            <p class="text-2xl font-bold ${stats.dbSizeBytes > 4 * 1024 * 1024 ? 'text-amber-400' : 'text-slate-200'}">${formatBytes(stats.dbSizeBytes)}</p>
-            <p class="text-xs text-slate-500">${stats.dbSizeBytes > 4 * 1024 * 1024 ? '⚠️ Pense à exporter le .sqlite' : 'stockage local'}</p>
+            <p class="font-mono text-2xl font-bold tabular-nums ${heavyStorage ? 'text-amber-400' : 'text-slate-200'}">${formatBytes(stats.dbSizeBytes)}</p>
+            <p class="text-xs text-slate-500">${heavyStorage ? '⚠️ Pense à exporter le .sqlite' : 'stockage local'}</p>
         </div>
     `;
 
@@ -770,7 +791,7 @@ async function renderDashboard() {
                     <div class="flex-1 bg-slate-900 rounded-full h-3 overflow-hidden">
                         <div class="bg-indigo-500 h-3 rounded-full" style="width:${widthPct}%"></div>
                     </div>
-                    <span class="text-xs text-slate-400 font-mono w-24 text-right">${hours} h <span class="text-slate-600">(${toDays(hours)}j)</span></span>
+                    <span class="text-xs text-slate-400 font-mono tabular-nums w-24 text-right">${hours} h <span class="text-slate-600">(${toDays(hours)}j)</span></span>
                 </div>
             `;
         });
@@ -1041,12 +1062,17 @@ async function render() {
                         ? `<div class="flex flex-wrap gap-1 mt-1">${gameGenres.map(gn => `<span class="text-[10px] bg-slate-700/60 text-slate-300 px-1.5 py-0.5 rounded">${escapeHtml(gn)}</span>`).join('')}</div>`
                         : '';
 
+                    // Liseré de statut sur le bord gauche de la ligne : l'état
+                    // (terminé/en cours) se lit d'un coup d'œil sans avoir à
+                    // parcourir jusqu'à la colonne Statut, même en scroll horizontal.
+                    const statusStripe = game.completed ? 'border-l-2 border-l-emerald-500/70' : 'border-l-2 border-l-amber-500/50';
+
                     cardHtml += `
-                        <tr class="border-b border-slate-700/50 hover:bg-slate-700/20 cursor-pointer" onclick="editGame(${game.game_platform_id})">
+                        <tr class="${statusStripe} border-b border-slate-700/50 hover:bg-indigo-500/[0.06] cursor-pointer transition-colors group" onclick="editGame(${game.game_platform_id})">
                             <td class="p-3">${thumbHtml}</td>
-                            <td class="p-3 font-medium text-slate-100">${escapeHtml(game.title)} ${notesIndicator}${tagsHtml}</td>
+                            <td class="p-3 font-medium text-slate-100 group-hover:text-white transition-colors">${escapeHtml(game.title)} ${notesIndicator}${tagsHtml}</td>
                             <td class="p-3 text-center">${platformIcon}</td>
-                            <td class="p-3 text-center font-mono">
+                            <td class="p-3 text-center font-mono tabular-nums">
                                 ${game.hours} h
                                 <div class="text-[10px] text-slate-500 font-sans">≈ ${toDays(game.hours)} j</div>
                             </td>
