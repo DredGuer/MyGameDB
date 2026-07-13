@@ -23,11 +23,15 @@ db/
 
 ## Base de Données
 
-Tables : `families`, `consoles`, `games`, `screenshots`, `app_settings`, `genres`, `game_genres`, `game_ownership_periods`, `console_ownership_periods`, `llm_settings` (préférences uniquement, jamais de clé API), `recommendations`, `recommendation_history`.
+Tables : `families`, `consoles`, `games`, `game_platforms`, `screenshots`, `app_settings`, `genres`, `game_genres`, `game_platform_ownership_periods`, `console_ownership_periods`, `llm_settings` (préférences uniquement, jamais de clé API), `recommendations`, `recommendation_history`.
+
+**Modèle multi-plateforme** (depuis la refonte "plateformes multiples") : un jeu (`games`) est une fiche unique (titre, genres, note, notes, jaquette). Sa présence sur une ou plusieurs plateformes (PS5, Switch, Steam, Mobile...) est représentée par des lignes dans `game_platforms` — une relation many-to-many enrichie entre `games` et `consoles`, chaque ligne portant ses propres `hours`, `completed`, `platform_type` (Physique/Dématérialisé), dates et — pour les instances issues d'une synchronisation Steam — `source='steam-sync'`, `steam_appid`, `last_synced_at`. `consoles` désigne donc toute plateforme de jeu, physique ou dématérialisée, pas seulement une console au sens strict. Les périodes de possession (`game_platform_ownership_periods`) sont rattachées à l'instance, pas au jeu global, car la date d'acquisition peut différer par support.
 
 Différences notables par rapport à l'ancien schéma front-end :
 - `games.cover_front` / `cover_back` et `screenshots.image_path` stockent un **chemin de fichier relatif** (ex: `covers/12_front.jpg`) au lieu d'un data URL base64 inline.
 - `llm_settings` ne contient plus de colonnes `llm_api_key_*` — les clés vivent dans les variables d'environnement du serveur.
+
+Une base encore au format "1 jeu = 1 console" (héritage V1) est migrée automatiquement vers ce modèle par `scripts/migrate-to-multi-platform.js`, invoqué par `scripts/init-db.js` avant l'application du schéma. L'ancienne table `game_ownership_periods` est conservée sous le nom `game_ownership_periods_deprecated` (filet de sécurité, suppression différée).
 
 ## Troubleshooting
 

@@ -23,7 +23,8 @@ Endpoint : `ws://<host>/ws` (upgrade sur le même port que l'API HTTP).
 |---|---|---|
 | `family:created` / `family:updated` / `family:deleted` | Mutation sur une famille | `{ id }` |
 | `console:created` / `console:updated` / `console:deleted` | Mutation sur une console (inclut les périodes de possession) | `{ id }` |
-| `game:created` / `game:updated` / `game:deleted` | Mutation sur un jeu (inclut les périodes de possession) | `{ id, console_id }` |
+| `game:created` / `game:updated` / `game:deleted` | Mutation sur la fiche jeu (titre, rating, notes) | `{ id }` (`game:created` inclut aussi `console_id`/`platformInstanceId` de la première instance) |
+| `game:platform-changed` | Mutation sur une instance de possession jeu↔plateforme (ajout/retrait d'une plateforme, heures, statut, dates, périodes de possession), y compris via la synchronisation Steam | `{ gameId, platformInstanceId }` |
 | `genre:created` / `genre:deleted` | Mutation sur un genre | `{ id }` |
 | `game:genre-changed` | Association/dissociation genre↔jeu, ou auto-détection | `{ id }` (id du jeu) |
 | `screenshot:created` / `screenshot:updated` / `screenshot:deleted` | Mutation sur un screenshot | `{ id, game_id }` |
@@ -33,6 +34,8 @@ Endpoint : `ws://<host>/ws` (upgrade sur le même port que l'API HTTP).
 | `recommendations:feedback-updated` | Mise à jour d'un feedback de recommandation | `{ id }` |
 | `recommendations:history-cleared` | Historique vidé | `{}` |
 | `db:restored` | Restauration d'une sauvegarde `.sqlite` | `{}` — le client doit recharger la page entièrement |
+
+Note : une synchronisation Steam automatique (déclenchée côté serveur, sans action utilisateur) émet `game:platform-changed` sans `originClientId` (aucun client à auto-ignorer).
 
 ## Reconnexion côté client
 

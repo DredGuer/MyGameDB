@@ -29,15 +29,29 @@ Toute requête mutante (POST/PUT/DELETE) peut porter un header `X-Client-Id` (UU
 
 ## Jeux
 
+Un jeu (`games`) est une fiche unique (titre, rating, notes, jaquette). Sa présence sur une ou
+plusieurs plateformes (PS5, Switch, Steam, Mobile...) est représentée par des **instances de
+possession** séparées — voir § Plateformes d'un jeu ci-dessous. C'est ce qui permet à un même jeu
+(ex: Waven) d'être possédé à la fois sur PC et sur mobile avec des heures/statuts distincts.
+
 | Méthode | Chemin | Body / Query | Description |
 |---|---|---|---|
-| GET | `/api/games` | query: `search`, `completed` (0/1), `sort` (`title`\|`hours`\|`rating`\|`date_added`), `console_id` | Liste filtrée |
-| GET | `/api/games/:id` | — | Détail d'un jeu |
-| POST | `/api/games` | `{ console_id, title, hours, completed, platform_type, allowDuplicate? }` | Création (409 si doublon titre+console, sauf `allowDuplicate: true`) |
-| PUT | `/api/games/:id` | `{ title, hours, completed, platform_type, rating, notes, date_completed }` | Modification |
-| DELETE | `/api/games/:id` | — | Suppression (cascade screenshots, genres, périodes + fichiers disque) |
-| GET/POST | `/api/games/:id/ownership-periods` | `{ date_start, date_end }` | Périodes de possession |
-| DELETE | `/api/games/ownership-periods/:periodId` | — | Suppression d'une période |
+| GET | `/api/games` | query: `search`, `completed` (0/1), `sort` (`title`\|`hours`\|`rating`\|`date_added`), `console_id` | Avec `console_id` : une ligne par jeu ayant une instance sur cette plateforme (champs d'instance inclus). Sans `console_id` : vue agrégée, une ligne par jeu avec heures cumulées toutes plateformes et `completed` = au moins une instance terminée |
+| GET | `/api/games/:id` | — | Détail de la fiche jeu (titre, rating, notes, jaquette) — sans le détail des instances, voir `/platforms` |
+| POST | `/api/games` | `{ console_id, title, hours, completed, platform_type, allowDuplicate? }` | Crée le jeu **et** sa première instance de possession (transaction). 409 si un jeu de même titre existe déjà, sauf `allowDuplicate: true` |
+| PUT | `/api/games/:id` | `{ title, rating, notes }` | Modification de la fiche jeu uniquement (heures/statut/support passent par `/platforms/:id`) |
+| DELETE | `/api/games/:id` | — | Suppression (cascade instances de plateforme, screenshots, genres + fichiers disque) |
+
+### Plateformes d'un jeu
+
+| Méthode | Chemin | Body | Description |
+|---|---|---|---|
+| GET | `/api/games/:gameId/platforms` | — | Liste des instances de possession du jeu (une par plateforme) |
+| POST | `/api/games/:gameId/platforms` | `{ console_id, hours, completed, platform_type }` | Ajoute une plateforme à un jeu existant (409 si déjà rattaché à cette plateforme) |
+| PUT | `/api/games/:gameId/platforms/:platformInstanceId` | `{ hours, completed, platform_type, date_completed }` | Modifie une instance (heures, statut, support, date de complétion) |
+| DELETE | `/api/games/:gameId/platforms/:platformInstanceId` | — | Retire cette plateforme du jeu (cascade périodes de possession de l'instance) |
+| GET/POST | `/api/games/:gameId/platforms/:platformInstanceId/ownership-periods` | `{ date_start, date_end }` | Périodes de possession de cette instance |
+| DELETE | `/api/games/:gameId/platforms/ownership-periods/:periodId` | — | Suppression d'une période |
 
 ## Genres
 
@@ -111,3 +125,12 @@ Fichiers servis statiquement via `GET /uploads/covers/:filename` et `GET /upload
 | GET | `/api/backup/sqlite` | — | Télécharge le fichier `.sqlite` courant |
 | GET | `/api/backup/markdown` | — | Génère et télécharge l'inventaire en Markdown |
 | POST | `/api/backup/restore` | multipart: `file` | Remplace intégralement la base (validation basique du schéma) |
+
+## Steam
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| GET | `/api/steam/status` | `{ configured, lastSyncAt, lastSyncReport, lastSyncError }` — ne renvoie jamais la clé API ni le SteamID |
+| POST | `/api/steam/sync` | Déclenche une synchronisation immédiate, renvoie `{ created, updated, skipped, errors }` |
+
+Synchronisation aussi déclenchée automatiquement au démarrage du serveur puis toutes les `STEAM_SYNC_INTERVAL_HOURS` heures (voir `.env.example`), si `STEAM_API_KEY`/`STEAM_ID` sont configurés.

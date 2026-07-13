@@ -8,10 +8,14 @@ const router = express.Router();
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../../bdd/collection.sqlite');
 
 router.get('/stats', asyncHandler(async (req, res) => {
-    const totalHours = db.prepare('SELECT COALESCE(SUM(hours),0) as v FROM games').get().v;
+    const totalHours = db.prepare('SELECT COALESCE(SUM(hours),0) as v FROM game_platforms').get().v;
     const totalGames = db.prepare('SELECT COUNT(*) as v FROM games').get().v;
-    const completedCount = db.prepare('SELECT COUNT(*) as v FROM games WHERE completed=1').get().v;
-    const topGame = db.prepare('SELECT title, hours FROM games ORDER BY hours DESC LIMIT 1').get() || null;
+    const completedCount = db.prepare('SELECT COUNT(DISTINCT game_id) as v FROM game_platforms WHERE completed=1').get().v;
+    const topGame = db.prepare(`
+        SELECT g.title, SUM(gp.hours) as hours
+        FROM games g JOIN game_platforms gp ON gp.game_id = g.id
+        GROUP BY g.id ORDER BY hours DESC LIMIT 1
+    `).get() || null;
 
     let dbSizeBytes = 0;
     try { dbSizeBytes = fs.statSync(DB_PATH).size; } catch (e) { /* fichier pas encore créé */ }
@@ -30,10 +34,10 @@ router.get('/stats', asyncHandler(async (req, res) => {
 
 router.get('/breakdown/families', asyncHandler(async (req, res) => {
     const rows = db.prepare(`
-        SELECT f.name, COALESCE(SUM(g.hours),0) as hours
+        SELECT f.name, COALESCE(SUM(gp.hours),0) as hours
         FROM families f
         LEFT JOIN consoles c ON c.family_id = f.id
-        LEFT JOIN games g ON g.console_id = c.id
+        LEFT JOIN game_platforms gp ON gp.console_id = c.id
         GROUP BY f.id ORDER BY hours DESC
     `).all();
     res.json({ data: rows });
@@ -41,10 +45,10 @@ router.get('/breakdown/families', asyncHandler(async (req, res) => {
 
 router.get('/breakdown/genres', asyncHandler(async (req, res) => {
     const rows = db.prepare(`
-        SELECT g.name, COUNT(DISTINCT gg.game_id) as game_count, COALESCE(SUM(ga.hours),0) as total_hours
+        SELECT g.name, COUNT(DISTINCT gg.game_id) as game_count, COALESCE(SUM(gp.hours),0) as total_hours
         FROM genres g
         LEFT JOIN game_genres gg ON gg.genre_id = g.id
-        LEFT JOIN games ga ON ga.id = gg.game_id
+        LEFT JOIN game_platforms gp ON gp.game_id = gg.game_id
         GROUP BY g.id
         HAVING game_count > 0
         ORDER BY total_hours DESC
@@ -53,8 +57,12 @@ router.get('/breakdown/genres', asyncHandler(async (req, res) => {
 }));
 
 // Analyse "styles de jeu par tranche d'âge" — portage direct de
-// computeAgeGenreStats() (frontend). Référence de date par jeu, par priorité :
-// 1. date de possession du jeu, 2. fallback console, 3. fallback date_added.
+// computeAgeGenreStats() (frontend), adapté au modèle multi-plateforme :
+// on itère par INSTANCE (game_platforms), pas par jeu, car chaque instance a
+// sa propre date de référence. Référence de date par instance, par priorité :
+// 1. date de possession de l'instance, 2. fallback console, 3. fallback date_added.
+// Un jeu multi-plateforme peut donc contribuer à plusieurs tranches d'âge si
+// ses instances ont des dates de référence différentes — comportement voulu.
 router.get('/age-genre-analysis', asyncHandler(async (req, res) => {
     const birthdateRow = db.prepare("SELECT value FROM app_settings WHERE key='birthdate'").get();
     if (!birthdateRow || !birthdateRow.value) {
@@ -63,8 +71,8 @@ router.get('/age-genre-analysis', asyncHandler(async (req, res) => {
     const birth = new Date(birthdateRow.value + 'T00:00:00');
     if (isNaN(birth.getTime())) return res.json({ data: null });
 
-    const games = db.prepare('SELECT id, hours, console_id, date_added FROM games').all();
-    if (games.length === 0) return res.json({ data: null });
+    const instances = db.prepare('SELECT id, game_id, hours, console_id, date_added FROM game_platforms').all();
+    if (instances.length === 0) return res.json({ data: null });
 
     const genreLinks = db.prepare('SELECT gg.game_id, g.name FROM game_genres gg JOIN genres g ON g.id = gg.genre_id').all();
     const gameGenreNames = {};
@@ -72,9 +80,9 @@ router.get('/age-genre-analysis', asyncHandler(async (req, res) => {
         (gameGenreNames[game_id] ||= []).push(name);
     });
 
-    const gameEarliest = {};
-    db.prepare("SELECT game_id, MIN(date_start) as d FROM game_ownership_periods WHERE date_start IS NOT NULL GROUP BY game_id").all()
-        .forEach(({ game_id, d }) => { gameEarliest[game_id] = d; });
+    const instanceEarliest = {};
+    db.prepare("SELECT game_platform_id, MIN(date_start) as d FROM game_platform_ownership_periods WHERE date_start IS NOT NULL GROUP BY game_platform_id").all()
+        .forEach(({ game_platform_id, d }) => { instanceEarliest[game_platform_id] = d; });
 
     const consoleEarliest = {};
     db.prepare("SELECT console_id, MIN(date_start) as d FROM console_ownership_periods WHERE date_start IS NOT NULL GROUP BY console_id").all()
@@ -84,8 +92,8 @@ router.get('/age-genre-analysis', asyncHandler(async (req, res) => {
     let excludedCount = 0;
     let estimatedCount = 0;
 
-    games.forEach(({ id: gameId, hours, console_id, date_added }) => {
-        let refDate = gameEarliest[gameId];
+    instances.forEach(({ id: platformInstanceId, game_id: gameId, hours, console_id, date_added }) => {
+        let refDate = instanceEarliest[platformInstanceId];
         let estimated = false;
         if (!refDate) { refDate = consoleEarliest[console_id]; estimated = true; }
         if (!refDate) { refDate = date_added; estimated = true; }

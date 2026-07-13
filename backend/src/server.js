@@ -9,6 +9,7 @@ const { WebSocketServer } = require('ws');
 const { initDb } = require('../../scripts/init-db');
 const { errorHandler } = require('./middleware/errorHandler');
 const hub = require('./ws/hub');
+const steamScheduler = require('./services/steam/steamScheduler');
 
 const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../bdd/collection.sqlite');
@@ -33,6 +34,7 @@ app.use(express.static(FRONTEND_PATH));
 const familiesRoutes = require('./routes/families.routes');
 const consolesRoutes = require('./routes/consoles.routes');
 const gamesRoutes = require('./routes/games.routes');
+const gamePlatformsRoutes = require('./routes/gamePlatforms.routes');
 const genresRoutes = require('./routes/genres.routes');
 const { gameGenresRouter } = require('./routes/genres.routes');
 const screenshotsRoutes = require('./routes/screenshots.routes');
@@ -43,6 +45,7 @@ const llmSettingsRoutes = require('./routes/llmSettings.routes');
 const recommendationsRoutes = require('./routes/recommendations.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const backupRoutes = require('./routes/backup.routes');
+const steamRoutes = require('./routes/steam.routes');
 
 app.use('/api/families', familiesRoutes);
 app.use('/api/consoles', consolesRoutes);
@@ -52,6 +55,7 @@ app.use('/api/consoles', consolesRoutes);
 app.use('/api/games/:gameId/genres', gameGenresRouter);
 app.use('/api/games/:gameId/screenshots', screenshotsRoutes);
 app.use('/api/games/:gameId/covers', coversRoutes);
+app.use('/api/games/:gameId/platforms', gamePlatformsRoutes);
 app.use('/api/games', gamesRoutes);
 app.use('/api/genres', genresRoutes);
 app.use('/api/screenshots', singleScreenshotRoutes);
@@ -60,6 +64,7 @@ app.use('/api/llm-settings', llmSettingsRoutes);
 app.use('/api/recommendations', recommendationsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/backup', backupRoutes);
+app.use('/api/steam', steamRoutes);
 
 app.get('/api/health', (req, res) => res.json({ data: { status: 'ok' } }));
 
@@ -73,3 +78,6 @@ server.listen(PORT, () => {
     console.log(`MyGameDB backend démarré sur http://localhost:${PORT}`);
     console.log(`WebSocket disponible sur ws://localhost:${PORT}/ws`);
 });
+
+// Non bloquant : no-op silencieux si STEAM_API_KEY/STEAM_ID absents.
+steamScheduler.start();

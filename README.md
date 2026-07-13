@@ -30,10 +30,12 @@ Voir [CHANGELOG.md](CHANGELOG.md) pour le détail complet.
 
 ## Fonctionnalités Principales
 
-- Organisation par Famille (ex: Nintendo) → Console (ex: Switch) → Jeu.
+- Organisation par Famille (ex: Nintendo) → Console/Plateforme (ex: Switch, Steam, Mobile) → Jeu.
+- **Un jeu peut être possédé sur plusieurs plateformes** (ex: un jeu à la fois sur PC et sur mobile) : chaque plateforme a ses propres heures jouées et statut, la fiche jeu (titre, note, notes, jaquette) reste unique et partagée.
 - Suivi des heures jouées, du statut (en cours / terminé), de la note, des styles/genres (tags combinables).
 - Jaquettes et screenshots par jeu (stockés en fichiers, pas en base64).
-- Dates de possession (jeux et consoles), avec analyse "styles de jeu par tranche d'âge" si tu renseignes ta date de naissance.
+- Dates de possession (par jeu+plateforme, et par console), avec analyse "styles de jeu par tranche d'âge" si tu renseignes ta date de naissance.
+- **Synchronisation automatique de ta bibliothèque Steam** (optionnelle) : import et mise à jour périodique des jeux possédés et du temps de jeu, sans jamais écraser une correction manuelle (les heures ne peuvent qu'augmenter).
 - Export de l'inventaire en Markdown (`.md`) ou de la base complète en `.sqlite`, import d'une sauvegarde `.sqlite`.
 - **Recommandations IA** (Gemini, Claude, ChatGPT ou Mistral au choix) : 9 jeux personnalisés répartis en 3 tiers — 🔥 Cœur de Cible (valeurs sûres), 🌤️ Périphérique (qui testent tes limites), 🌀 Exotique Hors Cadre (rupture assumée) — avec boucle de feedback et affinement itératif.
 - **Auto-détection de style** d'un jeu via IA, à partir de son titre.
@@ -114,6 +116,9 @@ Toute la configuration passe par le fichier `.env` (copié depuis `.env.example`
 | `LLM_API_KEY_CLAUDE` | Clé API Anthropic Claude | Non — idem |
 | `LLM_API_KEY_OPENAI` | Clé API OpenAI | Non — idem |
 | `LLM_API_KEY_MISTRAL` | Clé API Mistral AI | Non — idem |
+| `STEAM_API_KEY` | Clé API Steam ([steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)) | Non — requis seulement pour la synchronisation Steam |
+| `STEAM_ID` | SteamID64 (identifiant numérique à 17 chiffres, pas le pseudo) | Non — idem |
+| `STEAM_SYNC_INTERVAL_HOURS` | Fréquence de la synchronisation automatique | Non (défaut 6h) |
 
 Où obtenir une clé API :
 

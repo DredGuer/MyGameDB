@@ -60,13 +60,17 @@ gameGenresRouter.get('/', asyncHandler(async (req, res) => {
 // Déduit automatiquement le(s) style(s) d'un jeu via le LLM configuré, à partir
 // de son titre et de sa console (équivalent serveur de l'ancien autoDetectGenre()).
 gameGenresRouter.post('/auto-detect', asyncHandler(async (req, res) => {
-    const game = db.prepare('SELECT g.id, g.title, c.name as console_name FROM games g JOIN consoles c ON c.id = g.console_id WHERE g.id = ?').get(req.params.gameId);
+    const game = db.prepare(`
+        SELECT g.id, g.title,
+               (SELECT GROUP_CONCAT(c.name, ', ') FROM game_platforms gp JOIN consoles c ON c.id = gp.console_id WHERE gp.game_id = g.id) as console_names
+        FROM games g WHERE g.id = ?
+    `).get(req.params.gameId);
     if (!game) throw new ApiError(404, 'NOT_FOUND', 'Jeu introuvable.');
 
     const existingGenres = db.prepare('SELECT name FROM genres ORDER BY name ASC').all().map(r => r.name);
 
-    const systemPrompt = `Tu es un expert en catégorisation de jeux vidéo. On te donne un titre de jeu et éventuellement sa console. Réponds STRICTEMENT en JSON de la forme {"genres": ["Style1", "Style2"]} en choisissant en priorité parmi les styles déjà existants dans la base : ${existingGenres.join(', ') || '(aucun pour le moment)'}. Si aucun style existant ne convient bien, tu peux proposer un nouveau style court et générique (1-2 mots).`;
-    const userContent = `Titre du jeu : ${game.title}${game.console_name ? `\nConsole : ${game.console_name}` : ''}`;
+    const systemPrompt = `Tu es un expert en catégorisation de jeux vidéo. On te donne un titre de jeu et éventuellement ses plateformes. Réponds STRICTEMENT en JSON de la forme {"genres": ["Style1", "Style2"]} en choisissant en priorité parmi les styles déjà existants dans la base : ${existingGenres.join(', ') || '(aucun pour le moment)'}. Si aucun style existant ne convient bien, tu peux proposer un nouveau style court et générique (1-2 mots).`;
+    const userContent = `Titre du jeu : ${game.title}${game.console_names ? `\nPlateformes : ${game.console_names}` : ''}`;
     const toolSchema = {
         name: 'submit_genres',
         description: 'Soumets la liste des styles de jeu détectés.',

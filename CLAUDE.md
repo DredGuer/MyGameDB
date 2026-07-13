@@ -54,7 +54,7 @@ La stack a été choisie pour sa simplicité et sa pérennité (voir `backend/RE
 
 ## Arborescence du Projet
 
-*(Dernière mise à jour : 2026-07-13, migration backend Docker + WebSocket)*
+*(Dernière mise à jour : 2026-07-13, refonte multi-plateforme + synchronisation Steam)*
 
 ```
 .
@@ -74,16 +74,17 @@ La stack a été choisie pour sa simplicité et sa pérennité (voir `backend/RE
 │   ├── README.md
 │   ├── package.json
 │   └── src/
-│       ├── server.js                  # Point d'entrée : Express + WebSocket + statiques
+│       ├── server.js                  # Point d'entrée : Express + WebSocket + statiques + scheduler Steam
 │       ├── db/
 │       │   ├── README.md
-│       │   ├── connection.js          # Connexion SQLite (better-sqlite3) + reconnect()
-│       │   └── schema.sql             # Schéma SQL, source de vérité
+│       │   └── schema.sql             # Schéma SQL, source de vérité (games/game_platforms/consoles/...)
+│       │   └── connection.js          # Connexion SQLite (better-sqlite3) + reconnect()
 │       ├── routes/                    # Un fichier par ressource API
 │       │   ├── README.md
 │       │   ├── families.routes.js
-│       │   ├── consoles.routes.js
-│       │   ├── games.routes.js
+│       │   ├── consoles.routes.js     # Toute plateforme physique/numérique (PS5, Steam, Mobile...)
+│       │   ├── games.routes.js        # Fiche jeu (titre, rating, notes) — plus de console_id direct
+│       │   ├── gamePlatforms.routes.js  # Instances de possession jeu<->plateforme (hours, completed, dates)
 │       │   ├── genres.routes.js
 │       │   ├── screenshots.routes.js
 │       │   ├── covers.routes.js
@@ -91,7 +92,8 @@ La stack a été choisie pour sa simplicité et sa pérennité (voir `backend/RE
 │       │   ├── llmSettings.routes.js
 │       │   ├── recommendations.routes.js
 │       │   ├── dashboard.routes.js
-│       │   └── backup.routes.js
+│       │   ├── backup.routes.js
+│       │   └── steam.routes.js        # Statut + déclenchement de la synchronisation Steam
 │       ├── services/
 │       │   ├── README.md
 │       │   ├── llm/                   # Couche multi-fournisseurs LLM
@@ -101,8 +103,12 @@ La stack a été choisie pour sa simplicité et sa pérennité (voir `backend/RE
 │       │   │   ├── openaiProvider.js
 │       │   │   ├── mistralProvider.js
 │       │   │   └── jsonExtractor.js   # Parseur JSON tolérant (Gemini/OpenAI/Mistral)
+│       │   ├── steam/                 # Synchronisation automatique de la bibliothèque Steam
+│       │   │   ├── steamClient.js     # Appel HTTP pur à l'API Web Steam + lecture credentials
+│       │   │   ├── steamSync.js       # Matching jeu<->plateforme + règle de conflit (max heures)
+│       │   │   └── steamScheduler.js  # Déclenchement démarrage + périodique (setInterval)
 │       │   ├── recommendationPrompts.js  # Prompts système + matrice 4/2/3
-│       │   └── markdownExport.js      # Génération de l'inventaire Markdown
+│       │   └── markdownExport.js      # Génération de l'inventaire Markdown (par jeu, sous-tableau plateformes)
 │       ├── ws/
 │       │   ├── README.md
 │       │   └── hub.js                 # Registre de connexions + broadcast()
@@ -116,7 +122,7 @@ La stack a été choisie pour sa simplicité et sa pérennité (voir `backend/RE
 │   └── js/
 │       ├── api.js                     # Wrapper fetch centralisé vers l'API
 │       ├── ws-client.js               # Connexion WebSocket + reconnexion + dispatch
-│       ├── app.js                     # Rendu de l'UI + handlers CRUD
+│       ├── app.js                     # Rendu de l'UI + handlers CRUD + gestion multi-plateforme + sync Steam
 │       └── llm-ui.js                  # Modales LLM + affichage recommandations
 │
 ├── storage/
@@ -127,13 +133,15 @@ La stack a été choisie pour sa simplicité et sa pérennité (voir `backend/RE
 │
 ├── scripts/                           # Scripts d'exploitation / migration
 │   ├── README.md
-│   ├── init-db.js                     # Applique schema.sql (idempotent, lancé au démarrage)
+│   ├── init-db.js                     # Applique schema.sql (idempotent, migre auto si ancien format)
+│   ├── migrate-to-multi-platform.js   # Migration 1 jeu=1 console -> game_platforms (idempotent)
 │   ├── sanitize-existing-db.js        # Migration one-shot : extrait la clé API vers .env
 │   └── migrate-images-to-disk.js      # Migration one-shot : base64 → fichiers sur disque
 │
 ├── bdd/                                # Données réelles (JAMAIS commitées)
 │   ├── README.md
-│   └── collection.sqlite               # Base de données de l'utilisateur (gitignored)
+│   ├── collection.sqlite               # Base de données de l'utilisateur (gitignored)
+│   └── backups/                        # Sauvegardes manuelles horodatées (gitignored)
 │
 ├── docs/                              # Documentation technique approfondie
 │   ├── README.md

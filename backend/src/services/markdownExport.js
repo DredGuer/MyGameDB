@@ -1,48 +1,68 @@
 // Portage serveur de buildInventoryMarkdown() (ancien frontend). Réutilisé à la
 // fois pour l'endpoint d'export .md et comme payload envoyé au LLM.
+//
+// Format multi-plateforme : chaque jeu apparaît une seule fois (avec son
+// résumé global — styles, note, média, total d'heures) suivi d'un tableau de
+// ses instances de possession par plateforme. Les 3 requêtes globales
+// ci-dessous (anti N+1, même pattern que /api/genres/by-game) évitent une
+// requête préparée par jeu.
 const db = require('../db/connection');
 
 function buildInventoryMarkdown() {
-    const families = db.prepare('SELECT id, name FROM families ORDER BY name ASC').all();
-    if (families.length === 0) return null;
+    const games = db.prepare(`
+        SELECT id, title, rating, notes, cover_front, cover_back
+        FROM games ORDER BY title ASC
+    `).all();
+    if (games.length === 0) return null;
 
     let md = '# 🎮 Mon Inventaire de Jeux Vidéo\n\n';
-    md += "_Légende Média : 🎨 = jaquette disponible, 🖼️x N = nombre de screenshots. Les images elles-mêmes ne sont pas incluses ici._\n";
+    md += "_Légende Média : 🎨 = jaquette disponible, 🖼️x N = nombre de screenshots. Chaque jeu peut être possédé sur plusieurs plateformes ; les heures/statut sont indiqués par plateforme._\n";
 
-    families.forEach((family) => {
-        md += `\n## 📁 Famille : ${family.name}\n`;
-        const consoles = db.prepare('SELECT id, name FROM consoles WHERE family_id = ? ORDER BY name ASC').all(family.id);
+    const allInstances = db.prepare(`
+        SELECT gp.game_id, gp.hours, gp.completed, gp.platform_type, c.name as console_name, f.name as family_name
+        FROM game_platforms gp
+        JOIN consoles c ON c.id = gp.console_id
+        JOIN families f ON f.id = c.family_id
+        ORDER BY f.name ASC, c.name ASC
+    `).all();
+    const instancesByGame = {};
+    allInstances.forEach((i) => { (instancesByGame[i.game_id] ||= []).push(i); });
 
-        if (consoles.length === 0) {
-            md += '_Aucune console enregistrée dans cette famille._\n';
+    const genreRows = db.prepare(`
+        SELECT gg.game_id, gn.name FROM game_genres gg JOIN genres gn ON gn.id = gg.genre_id ORDER BY gn.name ASC
+    `).all();
+    const genresByGame = {};
+    genreRows.forEach(({ game_id, name }) => { (genresByGame[game_id] ||= []).push(name); });
+
+    const screenshotCounts = db.prepare(`
+        SELECT game_id, COUNT(*) as v FROM screenshots GROUP BY game_id
+    `).all();
+    const screenshotCountByGame = {};
+    screenshotCounts.forEach(({ game_id, v }) => { screenshotCountByGame[game_id] = v; });
+
+    games.forEach((g) => {
+        const instances = instancesByGame[g.id] || [];
+        const genreNames = (genresByGame[g.id] || []).join(', ') || '—';
+        const screenshotCount = screenshotCountByGame[g.id] || 0;
+        const hasCover = g.cover_front || g.cover_back ? 1 : 0;
+        const mediaStr = `${hasCover ? '🎨' : ''}${screenshotCount > 0 ? ` 🖼️x${screenshotCount}` : ''}`.trim() || '—';
+        const ratingStr = (g.rating !== null && g.rating !== undefined) ? `${g.rating}/10` : '—';
+        const totalHours = instances.reduce((sum, i) => sum + i.hours, 0);
+
+        md += `\n## 🎮 ${g.title}\n`;
+        md += `_Styles : ${genreNames} — Note globale : ${ratingStr} — Média : ${mediaStr} — Total heures (toutes plateformes) : ${totalHours}h_\n\n`;
+        if (g.notes) md += `> ${String(g.notes).replace(/\n/g, ' ')}\n\n`;
+
+        if (instances.length === 0) {
+            md += '_Aucune plateforme enregistrée pour ce jeu._\n';
+        } else {
+            md += '| Plateforme | Famille | Support | Heures | Terminé ? |\n';
+            md += '| :--- | :--- | :---: | :---: | :---: |\n';
+            instances.forEach((i) => {
+                const status = i.completed ? '✅ Oui' : '❌ Non (En cours)';
+                md += `| ${i.console_name} | ${i.family_name} | ${i.platform_type} | ${i.hours}h | ${status} |\n`;
+            });
         }
-
-        consoles.forEach((console_) => {
-            md += `\n### 🕹️ ${console_.name}\n`;
-
-            const games = db.prepare(`
-                SELECT g.title, g.hours, g.completed, g.platform_type, g.rating, g.notes,
-                       (CASE WHEN g.cover_front IS NOT NULL OR g.cover_back IS NOT NULL THEN 1 ELSE 0 END) as has_cover,
-                       (SELECT COUNT(*) FROM screenshots s WHERE s.game_id = g.id) as screenshot_count,
-                       (SELECT GROUP_CONCAT(gn.name, ', ') FROM game_genres gg2 JOIN genres gn ON gn.id = gg2.genre_id WHERE gg2.game_id = g.id) as genre_names
-                FROM games g WHERE g.console_id = ? ORDER BY g.title ASC
-            `).all(console_.id);
-
-            if (games.length === 0) {
-                md += '_Aucun jeu enregistré sur cette console._\n';
-            } else {
-                md += '| Jeu | Styles | Support | Heures | Note | Terminé ? | Média | Notes |\n';
-                md += '| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |\n';
-                games.forEach((g) => {
-                    const status = g.completed ? '✅ Oui' : '❌ Non (En cours)';
-                    const ratingStr = (g.rating !== null && g.rating !== undefined) ? `${g.rating}/10` : '—';
-                    const notesStr = g.notes ? String(g.notes).replace(/\|/g, '/').replace(/\n/g, ' ') : '';
-                    const mediaStr = `${g.has_cover ? '🎨' : ''}${g.screenshot_count > 0 ? ` 🖼️x${g.screenshot_count}` : ''}`.trim() || '—';
-                    const stylesStr = g.genre_names || '—';
-                    md += `| ${g.title} | ${stylesStr} | ${g.platform_type} | ${g.hours}h | ${ratingStr} | ${status} | ${mediaStr} | ${notesStr} |\n`;
-                });
-            }
-        });
     });
 
     return md;

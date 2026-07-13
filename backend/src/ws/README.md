@@ -25,6 +25,8 @@ Canal unique (`/ws`), pas de "rooms" : usage mono-utilisateur multi-appareils, t
 
 Voir `/docs/websocket.md` pour la liste complète des types d'événements et le contrat de chaque payload.
 
+Événement `game:platform-changed` (`{ gameId, platformInstanceId }`) : diffusé par `gamePlatforms.routes.js` à chaque création/modification/suppression d'une instance de possession (ajout d'une plateforme à un jeu existant, mise à jour des heures/statut, périodes de possession) ainsi que par la synchronisation Steam automatique (sans `originClientId`, car déclenchée côté serveur).
+
 ## Troubleshooting
 
 - **Un client ne reçoit jamais d'événement** : vérifier que la connexion WebSocket est bien établie (`wss.on('connection', ...)` dans `hub.js` doit avoir été appelé — voir les logs serveur).

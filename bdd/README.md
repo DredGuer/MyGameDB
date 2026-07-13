@@ -15,7 +15,9 @@ Seul `.gitkeep` est versionné, pour que le dossier existe dans le dépôt même
 
 ## Base de Données
 
-Le schéma appliqué à ce fichier est défini dans `backend/src/db/schema.sql` et appliqué automatiquement par `scripts/init-db.js` au démarrage du serveur si le fichier n'existe pas encore.
+Le schéma appliqué à ce fichier est défini dans `backend/src/db/schema.sql` et appliqué automatiquement par `scripts/init-db.js` au démarrage du serveur si le fichier n'existe pas encore. Si le fichier existe déjà mais provient d'une version antérieure au modèle multi-plateforme (un jeu = une seule console), `init-db.js` invoque automatiquement `scripts/migrate-to-multi-platform.js` avant d'appliquer le schéma à jour — aucune étape manuelle requise.
+
+Un dossier `backups/` (gitignored, jamais commité) peut contenir des copies de sauvegarde horodatées prises manuellement avant une opération sensible (migration de schéma, restauration).
 
 ## Troubleshooting
 

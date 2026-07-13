@@ -6,6 +6,7 @@ bdd/*.sqlite
 bdd/*.sqlite-journal
 bdd/*.sqlite-wal
 bdd/*.sqlite-shm
+bdd/backups/
 
 # Secrets
 .env

@@ -10,7 +10,8 @@
 
 ## Fonctionnalités Principales
 
-- `init-db.js` : applique `backend/src/db/schema.sql` sur le fichier pointé par `DB_PATH`. **Idempotent** (sûr à relancer) — appelé automatiquement au démarrage du serveur (`backend/src/server.js`).
+- `init-db.js` : applique `backend/src/db/schema.sql` sur le fichier pointé par `DB_PATH`. **Idempotent** (sûr à relancer) — appelé automatiquement au démarrage du serveur (`backend/src/server.js`). Détecte automatiquement une base encore au format "1 jeu = 1 console" et invoque `migrate-to-multi-platform.js` avant d'appliquer le schéma.
+- `migrate-to-multi-platform.js` : script de migration de données, auto-invoqué par `init-db.js` si nécessaire (peut aussi être lancé manuellement en CLI). Transforme le modèle "1 jeu = 1 console" (`games.console_id`) vers le modèle multi-plateforme (`game_platforms`, une instance par couple jeu+plateforme). **Idempotent** — no-op si déjà appliqué. Conserve l'ancienne table `game_ownership_periods` sous le nom `game_ownership_periods_deprecated` (filet de sécurité).
 - `sanitize-existing-db.js` : script one-shot utilisé une seule fois lors de la migration v2.0.0 pour extraire une clé API stockée en clair dans une base issue de l'ancienne version front-end, l'écrire dans `.env`, puis la purger de la base.
 - `migrate-images-to-disk.js` : script one-shot utilisé une seule fois lors de la migration v2.0.0 pour convertir les images base64 inline (ancien schéma) en fichiers sur disque (`storage/uploads/`).
 
@@ -18,9 +19,10 @@
 
 ```
 scripts/
-├── init-db.js                  # Récurrent — lancé à chaque démarrage du serveur
-├── sanitize-existing-db.js     # One-shot — déjà exécuté lors de la migration v2.0.0
-└── migrate-images-to-disk.js   # One-shot — déjà exécuté lors de la migration v2.0.0
+├── init-db.js                       # Récurrent — lancé à chaque démarrage du serveur
+├── migrate-to-multi-platform.js     # Auto-invoqué par init-db.js si besoin ; idempotent
+├── sanitize-existing-db.js          # One-shot — déjà exécuté lors de la migration v2.0.0
+└── migrate-images-to-disk.js        # One-shot — déjà exécuté lors de la migration v2.0.0
 ```
 
 ## Démarrage Rapide
@@ -28,9 +30,13 @@ scripts/
 ```bash
 # Depuis la racine du projet (nécessite npm install préalable)
 node scripts/init-db.js
+
+# Pour forcer la migration multi-plateforme sur une base spécifique (normalement
+# inutile, init-db.js s'en charge automatiquement) :
+node scripts/migrate-to-multi-platform.js chemin/vers/base.sqlite
 ```
 
-Les deux scripts one-shot (`sanitize-existing-db.js`, `migrate-images-to-disk.js`) ne doivent normalement plus être relancés — ils documentent la migration passée et servent de référence si une situation similaire se reproduit (ex: import d'une ancienne sauvegarde front-end).
+Les scripts one-shot historiques (`sanitize-existing-db.js`, `migrate-images-to-disk.js`) ne doivent normalement plus être relancés — ils documentent la migration passée et servent de référence si une situation similaire se reproduit (ex: import d'une ancienne sauvegarde front-end). `migrate-to-multi-platform.js` reste utile tant que des sauvegardes ou exports à l'ancien format peuvent être importés (voir `POST /api/backup/restore`).
 
 ## Troubleshooting
 

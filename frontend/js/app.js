@@ -53,6 +53,35 @@ async function initApp() {
     bindWsHandlers();
     connectWs();
     await render();
+    initSteamButton();
+}
+
+// Affiche le bouton de synchronisation Steam seulement si STEAM_API_KEY/STEAM_ID
+// sont configurés côté serveur (jamais de formulaire de credentials ici).
+async function initSteamButton() {
+    try {
+        const status = await api.getSteamStatus();
+        if (status.configured) {
+            document.getElementById('btn-steam-sync').classList.remove('hidden');
+            document.getElementById('btn-steam-sync').classList.add('flex');
+        }
+    } catch (e) { /* endpoint indisponible, tant pis, le bouton reste caché */ }
+}
+async function syncSteam() {
+    const btn = document.getElementById('btn-steam-sync');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Synchronisation en cours...';
+    try {
+        const report = await api.syncSteam();
+        alert(`Synchronisation Steam terminée : ${report.created} créé(s), ${report.updated} mis à jour, ${report.skipped} inchangé(s)${report.errors ? `, ${report.errors} erreur(s)` : ''}.`);
+        render();
+    } catch (err) {
+        alert('Erreur lors de la synchronisation Steam : ' + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
 }
 
 function bindFilterEvents() {
@@ -127,7 +156,7 @@ function bindFilterEvents() {
             await api.createGame({ console_id: consoleId, title, hours, completed, platform_type: platformType });
         } catch (err) {
             if (err.code === 'CONFLICT') {
-                if (!confirm('Ce jeu existe déjà sur cette console. L\'ajouter quand même ?')) return;
+                if (!confirm('Un jeu du même titre existe déjà (peut-être sur une autre plateforme). Créer quand même une fiche séparée ? Pour ajouter cette plateforme à la fiche existante à la place, ouvre le jeu existant et utilise "+ Ajouter" dans sa section Plateformes.')) return;
                 await api.createGame({ console_id: consoleId, title, hours, completed, platform_type: platformType, allowDuplicate: true });
             } else {
                 alert(err.message);
@@ -148,7 +177,7 @@ function bindWsHandlers() {
     const events = [
         'family:created', 'family:updated', 'family:deleted',
         'console:created', 'console:updated', 'console:deleted',
-        'game:created', 'game:updated', 'game:deleted',
+        'game:created', 'game:updated', 'game:deleted', 'game:platform-changed',
         'genre:created', 'genre:deleted', 'game:genre-changed',
         'screenshot:created', 'screenshot:updated', 'screenshot:deleted',
         'cover:updated', 'settings:updated'
@@ -358,35 +387,78 @@ async function addNewGenreInline(gameId) {
 }
 
 // --- CRUD : Jeu ---
-async function editGame(id) {
-    const g = gamesCache[id];
-    if (!g) return;
+// `id` ici est un game_platform_id (identifie l'instance cliquée dans le
+// tableau) : on en tire le gameId réel pour la fiche jeu et les sous-ressources
+// (genres, screenshots, jaquettes), et platformInstanceId pour les heures/statut.
+async function editGame(platformInstanceId) {
+    const cached = gamesCache[platformInstanceId];
+    if (!cached) return;
+    const gameId = cached.gameId;
+    const g = cached;
 
-    const screenshots = await api.getScreenshots(id);
+    const screenshots = await api.getScreenshots(gameId);
     const allGenres = await api.getGenres();
-    const activeGenreIds = new Set(await api.getGameGenres(id));
+    const activeGenreIds = new Set(await api.getGameGenres(gameId));
 
     const genreChipsHtml = allGenres.map(genre => {
         const isActive = activeGenreIds.has(genre.id);
-        return `<button onclick="toggleGameGenre(${id}, ${genre.id}, ${isActive})" class="px-2.5 py-1 rounded-full text-xs border transition ${isActive ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-600 text-slate-400 hover:border-indigo-500'}">${escapeHtml(genre.name)}</button>`;
+        return `<button onclick="toggleGameGenre(${gameId}, ${genre.id}, ${isActive})" class="px-2.5 py-1 rounded-full text-xs border transition ${isActive ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-600 text-slate-400 hover:border-indigo-500'}">${escapeHtml(genre.name)}</button>`;
     }).join(' ');
 
-    const gamePeriods = await api.getGameOwnershipPeriods(id);
-    const gamePeriodsHtml = gamePeriods.map(p => `
-        <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs">
-            <span class="text-slate-300">${p.date_start || '?'} → ${p.date_end || 'en cours'}</span>
-            <button onclick="deleteGameOwnershipPeriod(${p.id}, ${id})" class="text-rose-400 hover:text-rose-300">🗑️</button>
+    const platforms = await api.getGamePlatforms(gameId);
+    const consoles = await api.getConsoles();
+    const linkedConsoleIds = new Set(platforms.map(p => p.console_id));
+    const availableConsoles = consoles.filter(c => !linkedConsoleIds.has(c.id));
+
+    const platformsHtml = platforms.map(p => `
+        <div class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 space-y-1.5">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-slate-200">🕹️ ${escapeHtml(p.console_name)}</span>
+                <button onclick="removeGamePlatform(${gameId}, ${p.id})" class="text-rose-400 hover:text-rose-300 text-xs">🗑️ Retirer</button>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+                <div>
+                    <label class="text-[10px] text-slate-500">Heures</label>
+                    <input type="number" id="platform-hours-${p.id}" value="${p.hours}" min="0" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs font-mono">
+                </div>
+                <div>
+                    <label class="text-[10px] text-slate-500">Support</label>
+                    <select id="platform-type-${p.id}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">
+                        <option value="Physique" ${p.platform_type === 'Physique' ? 'selected' : ''}>📀 Physique</option>
+                        <option value="Dématérialisé" ${p.platform_type === 'Dématérialisé' ? 'selected' : ''}>☁️ Dématérialisé</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <label class="flex items-center gap-1.5 cursor-pointer text-xs bg-slate-800 border border-slate-600 h-[26px] px-2 rounded select-none w-full">
+                        <input type="checkbox" id="platform-completed-${p.id}" class="w-3.5 h-3.5 rounded accent-indigo-500" ${p.completed ? 'checked' : ''}>
+                        <span>Terminé</span>
+                    </label>
+                </div>
+            </div>
+            <button onclick="savePlatformInstance(${gameId}, ${p.id})" class="w-full bg-indigo-600/80 hover:bg-indigo-500 text-white py-1 rounded text-xs">💾 Enregistrer cette plateforme</button>
         </div>
     `).join('');
+
+    const addPlatformHtml = availableConsoles.length > 0 ? `
+        <div class="flex gap-2 items-end mt-2">
+            <div class="flex-1">
+                <label class="text-[10px] text-slate-500">Ajouter une plateforme</label>
+                <select id="new-platform-console" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-xs">
+                    ${availableConsoles.map(c => `<option value="${c.id}">[${escapeHtml(c.family_name)}] ${escapeHtml(c.name)}</option>`).join('')}
+                </select>
+            </div>
+            <button onclick="addGamePlatformInline(${gameId})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs whitespace-nowrap">+ Ajouter</button>
+        </div>
+    ` : '<p class="text-slate-500 text-[10px] italic mt-2">Toutes les plateformes existantes sont déjà rattachées à ce jeu.</p>';
 
     const coverBlock = (side, path) => path
         ? `<div class="relative">
                 <img src="/uploads/${path}" class="w-full h-32 object-cover rounded-lg border border-slate-600">
-                <button onclick="removeCover(${id}, '${side}')" class="absolute top-1 right-1 bg-rose-600 hover:bg-rose-500 text-white text-xs w-6 h-6 rounded-full leading-none">✕</button>
+                <button onclick="removeCover(${gameId}, '${side}')" class="absolute top-1 right-1 bg-rose-600 hover:bg-rose-500 text-white text-xs w-6 h-6 rounded-full leading-none">✕</button>
            </div>`
         : `<label class="flex items-center justify-center h-32 border-2 border-dashed border-slate-600 rounded-lg cursor-pointer hover:border-indigo-500 text-slate-500 text-xs text-center px-2">
                 + Ajouter
-                <input type="file" accept="image/*" class="hidden" onchange="handleCoverUpload(${id}, '${side}', this)">
+                <input type="file" accept="image/*" class="hidden" onchange="handleCoverUpload(${gameId}, '${side}', this)">
            </label>`;
 
     const screenshotsGridHtml = screenshots.map(ss => `
@@ -396,7 +468,7 @@ async function editGame(id) {
                 <input type="text" id="ss-title-${ss.id}" value="${escapeHtml(ss.title || '')}" placeholder="Titre" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">
                 <textarea id="ss-desc-${ss.id}" rows="2" placeholder="Description" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">${escapeHtml(ss.description || '')}</textarea>
                 <div class="flex justify-between items-center gap-1">
-                    <button onclick="deleteScreenshot(${ss.id}, ${id})" class="text-rose-400 hover:text-rose-300 text-xs">🗑️ Suppr.</button>
+                    <button onclick="deleteScreenshot(${ss.id}, ${gameId})" class="text-rose-400 hover:text-rose-300 text-xs">🗑️ Suppr.</button>
                     <button onclick="saveScreenshotCaption(${ss.id}, this)" class="text-indigo-400 hover:text-indigo-300 text-xs font-medium">💾 Enreg.</button>
                 </div>
             </div>
@@ -425,63 +497,25 @@ async function editGame(id) {
             <div class="border-t border-slate-700 pt-3">
                 <div class="flex items-center justify-between mb-2">
                     <label class="text-xs text-slate-400">🏷️ Styles de jeu (combinables)</label>
-                    <button id="btn-autodetect-genre-${id}" onclick="autoDetectGenre(${id})" class="bg-fuchsia-600 hover:bg-fuchsia-500 text-white px-2.5 py-1 rounded text-xs whitespace-nowrap">🤖 Auto-détecter le style</button>
+                    <button id="btn-autodetect-genre-${gameId}" onclick="autoDetectGenre(${gameId})" class="bg-fuchsia-600 hover:bg-fuchsia-500 text-white px-2.5 py-1 rounded text-xs whitespace-nowrap">🤖 Auto-détecter le style</button>
                 </div>
                 <div class="flex flex-wrap gap-1.5 mb-2">${genreChipsHtml || '<span class="text-slate-500 text-xs italic">Aucun style défini — crée-en un ci-dessous.</span>'}</div>
                 <div class="flex gap-2">
                     <input type="text" id="new-genre-name" placeholder="Nouveau style..." class="flex-1 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
-                    <button onclick="addNewGenreInline(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs whitespace-nowrap">+ Créer et taguer</button>
+                    <button onclick="addNewGenreInline(${gameId})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs whitespace-nowrap">+ Créer et taguer</button>
                 </div>
             </div>
 
             <div class="border-t border-slate-700 pt-3">
-                <label class="text-xs text-slate-400 block mb-2">📅 Dates de possession du jeu</label>
-                <p class="text-[10px] text-slate-500 mb-2">Plusieurs périodes possibles (rachat après revente, etc.). Sert aussi à l'analyse "styles par âge" ci-dessous dans le dashboard.</p>
-                <div class="space-y-1 mb-2">${gamePeriodsHtml || '<p class="text-slate-500 text-xs italic">Aucune période enregistrée.</p>'}</div>
-                <div class="flex gap-2 items-end">
-                    <div class="flex-1">
-                        <label class="text-[10px] text-slate-500">Acquis le</label>
-                        <input type="date" id="new-period-game-start" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
-                    </div>
-                    <div class="flex-1">
-                        <label class="text-[10px] text-slate-500">Cédé le (optionnel)</label>
-                        <input type="date" id="new-period-game-end" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
-                    </div>
-                    <button onclick="addGameOwnershipPeriod(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs whitespace-nowrap">+ Ajouter</button>
-                </div>
+                <label class="text-xs text-slate-400 block mb-2">🕹️ Plateformes possédées</label>
+                <p class="text-[10px] text-slate-500 mb-2">Un même jeu peut être possédé sur plusieurs plateformes (ex: PC et mobile) — heures et statut sont suivis séparément par plateforme.</p>
+                <div class="space-y-2 mb-2">${platformsHtml || '<p class="text-slate-500 text-xs italic">Aucune plateforme enregistrée.</p>'}</div>
+                ${addPlatformHtml}
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="text-xs text-slate-400">Heures</label>
-                    <input type="number" id="modal-game-hours" value="${g.hours}" min="0"
-                        oninput="document.getElementById('modal-game-hours-days').textContent = '≈ ' + ((parseFloat(this.value)||0)/hoursPerDay).toFixed(1) + ' j'"
-                        class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono">
-                    <p id="modal-game-hours-days" class="text-[10px] text-slate-500 mt-1">≈ ${toDays(g.hours)} j</p>
-                </div>
-                <div>
-                    <label class="text-xs text-slate-400">Note (/10)</label>
-                    <input type="number" id="modal-game-rating" value="${g.rating === null || g.rating === undefined ? '' : g.rating}" min="0" max="10" placeholder="—" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono">
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="text-xs text-slate-400">Support</label>
-                    <select id="modal-game-platform" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">
-                        <option value="Physique" ${g.platformType === 'Physique' ? 'selected' : ''}>📀 Physique</option>
-                        <option value="Dématérialisé" ${g.platformType === 'Dématérialisé' ? 'selected' : ''}>☁️ Dématérialisé</option>
-                    </select>
-                </div>
-                <div class="flex items-end">
-                    <label class="flex items-center gap-2 cursor-pointer text-sm bg-slate-900 border border-slate-600 h-[38px] px-3 rounded select-none w-full">
-                        <input type="checkbox" id="modal-game-completed" class="w-4 h-4 rounded accent-indigo-500" ${g.completed ? 'checked' : ''}>
-                        <span>Terminé</span>
-                    </label>
-                </div>
-            </div>
             <div>
-                <label class="text-xs text-slate-400">Date de complétion</label>
-                <input type="date" id="modal-game-date-completed" value="${g.dateCompleted || ''}" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">
+                <label class="text-xs text-slate-400">Note globale (/10)</label>
+                <input type="number" id="modal-game-rating" value="${g.rating === null || g.rating === undefined ? '' : g.rating}" min="0" max="10" placeholder="—" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono">
             </div>
             <div>
                 <label class="text-xs text-slate-400">Notes / Commentaires</label>
@@ -496,40 +530,65 @@ async function editGame(id) {
                     <input type="file" id="new-screenshot-file" accept="image/*" class="w-full text-xs text-slate-400">
                     <input type="text" id="new-screenshot-title" placeholder="Titre (optionnel)" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">
                     <textarea id="new-screenshot-desc" rows="2" placeholder="Description (optionnelle)" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs"></textarea>
-                    <button onclick="addScreenshot(${id})" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded text-xs font-medium">Ajouter le screenshot</button>
+                    <button onclick="addScreenshot(${gameId})" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded text-xs font-medium">Ajouter le screenshot</button>
                 </div>
             </div>
         </div>
         <div class="flex justify-between gap-2 mt-5">
-            <button onclick="deleteGame(${id})" class="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded text-sm">🗑️ Supprimer</button>
+            <button onclick="deleteGame(${gameId})" class="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded text-sm">🗑️ Supprimer le jeu</button>
             <div class="flex gap-2">
                 <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Annuler</button>
-                <button onclick="saveGameEdit(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm">Enregistrer</button>
+                <button onclick="saveGameEdit(${gameId})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm">Enregistrer</button>
             </div>
         </div>
     `);
 }
-async function saveGameEdit(id) {
-    const previouslyCompleted = gamesCache[id] ? gamesCache[id].completed : 0;
-
+async function saveGameEdit(gameId) {
     const title = document.getElementById('modal-game-title').value.trim();
-    const hours = parseInt(document.getElementById('modal-game-hours').value, 10) || 0;
-    const completed = document.getElementById('modal-game-completed').checked;
-    const platformType = document.getElementById('modal-game-platform').value;
     const ratingRaw = document.getElementById('modal-game-rating').value;
     const rating = ratingRaw === '' ? null : Math.max(0, Math.min(10, parseInt(ratingRaw, 10)));
     const notes = document.getElementById('modal-game-notes').value.trim();
-    const dateCompleted = document.getElementById('modal-game-date-completed').value || null;
 
     if (!title) { alert('Le titre ne peut pas être vide.'); return; }
 
-    const result = await api.updateGame(id, { title, hours, completed, platform_type: platformType, rating, notes, date_completed: dateCompleted });
+    await api.updateGame(gameId, { title, rating, notes });
     closeModal();
     render();
+}
 
-    if (!previouslyCompleted && result.completed) {
+// Enregistre les heures/statut/support d'une instance de plateforme précise,
+// puis rouvre la modale (comportement cohérent avec les autres sous-actions
+// de la modale d'édition : ownership periods, screenshots...).
+async function savePlatformInstance(gameId, platformInstanceId) {
+    const hours = parseInt(document.getElementById(`platform-hours-${platformInstanceId}`).value, 10) || 0;
+    const completed = document.getElementById(`platform-completed-${platformInstanceId}`).checked;
+    const platformType = document.getElementById(`platform-type-${platformInstanceId}`).value;
+
+    const wasCompleted = (gamesCache[platformInstanceId] && gamesCache[platformInstanceId].completed) || 0;
+    const result = await api.updateGamePlatform(gameId, platformInstanceId, { hours, completed, platform_type: platformType });
+    render();
+    editGame(platformInstanceId);
+
+    if (!wasCompleted && result.completed) {
+        const title = gamesCache[platformInstanceId] ? gamesCache[platformInstanceId].title : '';
         celebrateCompletion(title);
     }
+}
+async function addGamePlatformInline(gameId) {
+    const consoleId = document.getElementById('new-platform-console').value;
+    if (!consoleId) return;
+    const newInstance = await api.addGamePlatform(gameId, { console_id: consoleId, hours: 0, completed: false, platform_type: 'Physique' });
+    // render() doit être attendu : il repeuple gamesCache, dont editGame a
+    // besoin pour résoudre la nouvelle instance (sinon cache pas encore prêt).
+    await render();
+    editGame(newInstance.id);
+}
+async function removeGamePlatform(gameId, platformInstanceId) {
+    if (!confirm('Retirer cette plateforme du jeu ? Les heures/statut associés à cette plateforme seront perdus.')) return;
+    await api.removeGamePlatform(gameId, platformInstanceId);
+    render();
+    // La modale ne peut plus être adressée par l'instance retirée : on la ferme.
+    closeModal();
 }
 
 // --- Petit effet WOUAHHH : célébration à la complétion d'un jeu ---
@@ -573,19 +632,6 @@ async function deleteGame(id) {
     await api.deleteGame(id);
     closeModal();
     render();
-}
-async function addGameOwnershipPeriod(gameId) {
-    const start = document.getElementById('new-period-game-start').value;
-    const end = document.getElementById('new-period-game-end').value || null;
-    if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
-    await api.addGameOwnershipPeriod(gameId, start, end);
-    render();
-    editGame(gameId);
-}
-async function deleteGameOwnershipPeriod(periodId, gameId) {
-    await api.deleteGameOwnershipPeriod(periodId);
-    render();
-    editGame(gameId);
 }
 
 // --- Jaquettes (avant / arrière) ---
@@ -915,8 +961,11 @@ async function render() {
                 `;
 
                 for (const game of games) {
-                    gamesCache[game.id] = {
-                        title: game.title, hours: game.hours, completed: game.completed,
+                    // Indexé par instance (game_platform_id), pas par game.id : un
+                    // même jeu peut apparaître sous plusieurs consoles (ex: Waven
+                    // sur PC et sur mobile) et écraserait sinon la 1re entrée.
+                    gamesCache[game.game_platform_id] = {
+                        gameId: game.id, title: game.title, hours: game.hours, completed: game.completed,
                         platformType: game.platform_type, rating: game.rating, notes: game.notes,
                         dateCompleted: game.date_completed, coverFront: game.cover_front, coverBack: game.cover_back
                     };
@@ -938,7 +987,7 @@ async function render() {
                         : '';
 
                     cardHtml += `
-                        <tr class="border-b border-slate-700/50 hover:bg-slate-700/20 cursor-pointer" onclick="editGame(${game.id})">
+                        <tr class="border-b border-slate-700/50 hover:bg-slate-700/20 cursor-pointer" onclick="editGame(${game.game_platform_id})">
                             <td class="p-3">${thumbHtml}</td>
                             <td class="p-3 font-medium text-slate-100">${escapeHtml(game.title)} ${notesIndicator}${tagsHtml}</td>
                             <td class="p-3 text-center">${platformIcon}</td>
