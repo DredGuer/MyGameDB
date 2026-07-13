@@ -7,6 +7,35 @@ let searchQuery = '';
 let statusFilter = 'all';
 let sortBy = 'title';
 
+// Tri individuel par console : surcharge le tri global (sortBy) pour une
+// console précise si l'utilisateur en choisit un depuis la carte elle-même.
+// Clé = console_id, valeur = 'title'|'hours'|'rating'|'date'. Persisté pour
+// survivre à un rechargement de page.
+let consoleSortOverrides = JSON.parse(localStorage.getItem('game_db_console_sort_overrides') || '{}');
+function setConsoleSortOverride(consoleId, value) {
+    if (value === '__global__') {
+        delete consoleSortOverrides[consoleId];
+    } else {
+        consoleSortOverrides[consoleId] = value;
+    }
+    localStorage.setItem('game_db_console_sort_overrides', JSON.stringify(consoleSortOverrides));
+    render();
+}
+
+// Consoles repliées (accordéon) : Set de console_id, persisté pour survivre
+// à un rechargement de page et à un re-render (une console repliée le reste
+// après une mutation ailleurs dans l'app).
+let collapsedConsoles = new Set(JSON.parse(localStorage.getItem('game_db_collapsed_consoles') || '[]'));
+function toggleConsoleCollapsed(consoleId) {
+    if (collapsedConsoles.has(consoleId)) {
+        collapsedConsoles.delete(consoleId);
+    } else {
+        collapsedConsoles.add(consoleId);
+    }
+    localStorage.setItem('game_db_collapsed_consoles', JSON.stringify([...collapsedConsoles]));
+    render();
+}
+
 // Base de conversion heures -> jours (réglable, reste une préférence d'affichage
 // locale au navigateur — cohérent avec l'ancienne version)
 let hoursPerDay = parseFloat(localStorage.getItem('game_db_hours_per_day')) || 8;
@@ -885,7 +914,7 @@ async function render() {
     const filterActive = searchQuery !== '' || statusFilter !== 'all';
     let anyRendered = false;
 
-    const sortParam = sortBy === 'hours' ? 'hours' : sortBy === 'rating' ? 'rating' : sortBy === 'date' ? 'date_added' : 'title';
+    const toSortParam = (val) => val === 'hours' ? 'hours' : val === 'rating' ? 'rating' : val === 'date' ? 'date_added' : 'title';
     const completedParam = statusFilter === 'completed' ? '1' : statusFilter === 'ongoing' ? '0' : undefined;
 
     for (const family of families) {
@@ -894,7 +923,8 @@ async function render() {
         const consolesWithGames = [];
         for (const c of consolesOfFamily) {
             consolesCache[c.id] = { name: c.name, familyId: family.id };
-            const games = await api.getGames({ console_id: c.id, search: searchQuery || undefined, completed: completedParam, sort: sortParam });
+            const effectiveSort = toSortParam(consoleSortOverrides[c.id] || sortBy);
+            const games = await api.getGames({ console_id: c.id, search: searchQuery || undefined, completed: completedParam, sort: effectiveSort });
             consolesWithGames.push({ consoleId: c.id, consoleName: c.name, games });
         }
 
@@ -930,15 +960,31 @@ async function render() {
             const card = document.createElement('div');
             card.className = 'bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-lg';
 
+            const isCollapsed = collapsedConsoles.has(consoleId);
+            const consoleSortValue = consoleSortOverrides[consoleId] || '__global__';
+            const consoleSortSelect = `
+                <select onclick="event.stopPropagation()" onchange="setConsoleSortOverride(${consoleId}, this.value)" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-slate-300">
+                    <option value="__global__" ${consoleSortValue === '__global__' ? 'selected' : ''}>Tri : global (${sortBy === 'hours' ? 'Heures' : sortBy === 'rating' ? 'Note' : sortBy === 'date' ? 'Date' : 'Titre'})</option>
+                    <option value="title" ${consoleSortValue === 'title' ? 'selected' : ''}>Titre (A-Z)</option>
+                    <option value="hours" ${consoleSortValue === 'hours' ? 'selected' : ''}>Heures (desc)</option>
+                    <option value="rating" ${consoleSortValue === 'rating' ? 'selected' : ''}>Note (desc)</option>
+                    <option value="date" ${consoleSortValue === 'date' ? 'selected' : ''}>Date d'ajout (récent)</option>
+                </select>
+            `;
+
             let cardHtml = `
-                <div class="bg-slate-700/40 px-5 py-3 border-b border-slate-700 flex justify-between items-center">
-                    <h3 class="font-bold text-lg text-slate-200">🕹️ ${escapeHtml(consoleName)}</h3>
+                <div class="bg-slate-700/40 px-5 py-3 border-b border-slate-700 flex flex-wrap justify-between items-center gap-2 cursor-pointer" onclick="toggleConsoleCollapsed(${consoleId})">
+                    <h3 class="font-bold text-lg text-slate-200 flex items-center gap-2">
+                        <span class="text-sm transition-transform ${isCollapsed ? '-rotate-90' : ''}">▼</span>
+                        🕹️ ${escapeHtml(consoleName)}
+                    </h3>
                     <div class="flex items-center gap-3">
                         <span class="text-xs bg-slate-900 px-2 py-1 rounded text-slate-400 font-mono">${games.length} jeu(x)</span>
-                        <button onclick="editConsole(${consoleId})" class="text-slate-400 hover:text-indigo-400 transition text-sm">✏️</button>
+                        ${games.length > 0 ? consoleSortSelect : ''}
+                        <button onclick="event.stopPropagation(); editConsole(${consoleId})" class="text-slate-400 hover:text-indigo-400 transition text-sm">✏️</button>
                     </div>
                 </div>
-                <div class="p-4">
+                <div class="p-4 ${isCollapsed ? 'hidden' : ''}">
             `;
 
             if (games.length === 0) {

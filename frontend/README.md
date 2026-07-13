@@ -26,6 +26,8 @@ Identiques à l'ancienne version front-end : gestion de familles/consoles/jeux, 
 
 **Synchronisation Steam** : un bouton "🔄 Synchroniser Steam" apparaît dans l'en-tête si le serveur a `STEAM_API_KEY`/`STEAM_ID` configurés (`GET /api/steam/status`). Aucun formulaire de credentials côté web — la configuration reste exclusivement dans `.env` du serveur.
 
+**Tri par console et repli** : chaque carte-console a son propre menu de tri (Titre/Heures/Note/Date d'ajout), indépendant du tri global, et peut être repliée/dépliée (clic sur son en-tête) pour alléger l'affichage sur une collection avec beaucoup de plateformes — les deux préférences sont mémorisées entre les sessions.
+
 ## Index du Projet
 
 ```

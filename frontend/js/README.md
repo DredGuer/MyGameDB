@@ -33,6 +33,8 @@ Aucun state management formel : chaque mutation déclenche un nouvel appel à `r
 
 **Modèle multi-plateforme** (`app.js`) : `gamesCache` est indexé par `game_platform_id` (identifiant d'instance de possession), pas par `game.id` — un même jeu peut apparaître sous plusieurs cartes-consoles (ex: Waven sur PC et sur mobile), et un cache indexé par jeu écraserait la première entrée. `editGame(platformInstanceId)` résout le `gameId` réel depuis le cache pour charger la fiche jeu (titre, rating, notes, genres, screenshots), tandis que les heures/statut/support affichés et modifiables dans la section "Plateformes possédées" de la modale restent scopés à l'instance cliquée.
 
+**Tri par console et accordéon** (`app.js`) : chaque carte-console propose son propre sélecteur de tri (`consoleSortOverrides`, map `console_id -> valeur`, persistée dans `localStorage`) qui surcharge le tri global (`sortBy`) uniquement pour cette console — utile pour comparer par exemple les jeux Switch par note tout en gardant les jeux Steam triés par heures. Chaque carte est aussi repliable/dépliable (clic sur l'en-tête, `collapsedConsoles` un `Set` de `console_id` également persisté) pour alléger l'affichage quand la collection couvre beaucoup de plateformes.
+
 ## Troubleshooting
 
 - **`api is not defined` / `CLIENT_ID is not defined`** : vérifier l'ordre des balises `<script>` dans `index.html` — `api.js` doit toujours être chargé en premier.
