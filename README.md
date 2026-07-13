@@ -1,35 +1,119 @@
 # 🎮 MyGameDB
 
-Gestionnaire de collection de jeux vidéo **100% local**, sans backend ni installation. Tout tient dans un seul fichier HTML : `MyGameDB_Local_v5.html`.
+Gestionnaire de collection de jeux vidéo, avec backend local et synchronisation temps réel entre tous tes appareils.
 
-## Fonctionnement
+## Table des Matières
 
-- Base de données SQLite exécutée directement dans le navigateur ([sql.js](https://github.com/sql-js/sql.js)).
-- Les données sont persistées automatiquement dans le `localStorage` du navigateur.
-- Aucune donnée n'est envoyée à un serveur, sauf pour la fonctionnalité de recommandation IA (voir plus bas), qui envoie ta collection à un fournisseur de LLM externe si tu l'active volontairement.
+1. [Journal des Mises à Jour](CHANGELOG.md)
+2. [Nouveautés v2.0.0 — Backend Docker + synchronisation temps réel](#nouveautés-v200--backend-docker--synchronisation-temps-réel)
+3. [Fonctionnalités Principales](#fonctionnalités-principales)
+5. [Index du Projet](#index-du-projet)
+6. [Démarrage Rapide](#démarrage-rapide)
+7. [Mise en Production](#mise-en-production)
+8. [Architecture Complète](#architecture-complète)
+9. [Stack Technique](#stack-technique)
+10. [API Endpoints](#api-endpoints)
+11. [Base de Données](#base-de-données)
+12. [Configuration](#configuration)
+13. [Troubleshooting](#troubleshooting)
 
-## Utilisation
+## Nouveautés v2.0.0 — Backend Docker + synchronisation temps réel
 
-Ouvre simplement `MyGameDB_Local_v5.html` dans un navigateur moderne (Chrome, Firefox, Safari, Edge). Aucune installation, aucun serveur requis.
+L'application n'est plus un simple fichier HTML avec une base SQLite enfermée dans un navigateur (localStorage). Elle tourne désormais en **service permanent local via Docker**, avec :
 
-### Fonctionnalités principales
+- Une base de données SQLite **sur disque**, indépendante de tout navigateur — plus de perte de données en changeant de Chrome vers Firefox, ou en vidant le cache.
+- Un accès via `http://localhost:3000` depuis n'importe quel navigateur de la machine (et du réseau local).
+- **Synchronisation en temps réel** : ouvre l'app sur ton PC et ton téléphone en même temps — coche "Terminé" sur l'un, ça se met à jour instantanément sur l'autre, sans recharger la page.
+- Les clés API des fournisseurs LLM ne transitent plus jamais par le navigateur ni la base de données — elles restent dans un fichier `.env` local, jamais partagé.
+
+Voir [CHANGELOG.md](CHANGELOG.md) pour le détail complet.
+
+## Fonctionnalités Principales
 
 - Organisation par Famille (ex: Nintendo) → Console (ex: Switch) → Jeu.
 - Suivi des heures jouées, du statut (en cours / terminé), de la note, des styles/genres (tags combinables).
-- Jaquettes et screenshots par jeu.
+- Jaquettes et screenshots par jeu (stockés en fichiers, pas en base64).
 - Dates de possession (jeux et consoles), avec analyse "styles de jeu par tranche d'âge" si tu renseignes ta date de naissance.
-- Export de l'inventaire en Markdown (`.md`) ou de la base complète en `.sqlite`.
-- Import d'une base `.sqlite` précédemment exportée.
+- Export de l'inventaire en Markdown (`.md`) ou de la base complète en `.sqlite`, import d'une sauvegarde `.sqlite`.
+- **Recommandations IA** (Gemini, Claude, ChatGPT ou Mistral au choix) : 9 jeux personnalisés répartis en 3 tiers — 🔥 Cœur de Cible (valeurs sûres), 🌤️ Périphérique (qui testent tes limites), 🌀 Exotique Hors Cadre (rupture assumée) — avec boucle de feedback et affinement itératif.
+- **Auto-détection de style** d'un jeu via IA, à partir de son titre.
+- **Synchronisation temps réel multi-appareils** via WebSocket.
 
-## Recommandations par IA
+## Index du Projet
 
-L'application peut interroger un LLM (Google Gemini, Anthropic Claude, OpenAI ChatGPT ou Mistral AI) pour te proposer 10 jeux personnalisés à partir de ta collection, avec un score de correspondance et une explication.
+Voir la section "Arborescence du Projet" dans [CLAUDE.md](CLAUDE.md) pour la vue d'ensemble complète et toujours à jour du dépôt. Résumé :
 
-### Configurer une clé API
+```
+backend/    # API REST + WebSocket + logique métier (Node.js/Express)
+frontend/   # Client web (HTML/CSS/JS vanilla, aucun build step)
+storage/    # Jaquettes et screenshots uploadés (fichiers, jamais en base)
+scripts/    # Scripts d'initialisation et de migration de la base
+bdd/        # Données réelles de l'utilisateur (jamais commitées)
+docs/       # Documentation technique (API, WebSocket, architecture)
+```
 
-1. Clique sur **⚙️ Configurer l'IA** (au-dessus de la section "Recommandations IA").
-2. Choisis un fournisseur et colle ta clé API. Un modèle par défaut est proposé, modifiable.
-3. Clique sur **Enregistrer**.
+## Démarrage Rapide
+
+Prérequis : [Docker](https://www.docker.com/) et Docker Compose.
+
+```bash
+# 1. Copier le template de configuration
+cp .env.example .env
+
+# 2. (Optionnel) Renseigner une ou plusieurs clés API LLM dans .env
+#    LLM_API_KEY_GEMINI=... / LLM_API_KEY_CLAUDE=... / etc.
+
+# 3. Lancer l'application
+docker compose up -d
+
+# 4. Ouvrir dans un navigateur
+open http://localhost:3000
+```
+
+L'application tourne désormais en arrière-plan (`restart: unless-stopped`). Pour l'arrêter : `docker compose down`. Pour voir les logs : `docker compose logs -f`.
+
+## Mise en Production
+
+Ce projet est conçu pour un usage **local personnel** (un service qui tourne en permanence sur ta propre machine, accessible sur ton réseau local) — il n'y a pas de déploiement cloud prévu ni de configuration TLS/domaine. Pour l'exposer au-delà de ton réseau local, ajoute toi-même un reverse proxy avec authentification (hors du périmètre de ce projet).
+
+## Architecture Complète
+
+Voir [docs/architecture.md](docs/architecture.md) pour le schéma complet des flux (conteneur unique servant API + WebSocket + fichiers statiques, volumes Docker pour la base et les uploads, appels sortants vers les fournisseurs LLM).
+
+## Stack Technique
+
+| Composant | Choix |
+|---|---|
+| Runtime | Node.js 22 LTS |
+| Framework HTTP | Express 4.x |
+| Base de données | SQLite (`better-sqlite3`) |
+| Temps réel | WebSocket (`ws`) |
+| Frontend | HTML/CSS/JS vanilla, Tailwind CDN, aucun build step |
+| Conteneurisation | Docker + Docker Compose (conteneur unique) |
+
+Détails et justifications dans [backend/README.md](backend/README.md).
+
+## API Endpoints
+
+Référence complète : [docs/api.md](docs/api.md).
+
+## Base de Données
+
+SQLite, fichier unique (`bdd/collection.sqlite`, monté en volume Docker). Schéma défini dans `backend/src/db/schema.sql`. Voir [backend/src/db/README.md](backend/src/db/README.md).
+
+## Configuration
+
+Toute la configuration passe par le fichier `.env` (copié depuis `.env.example`) :
+
+| Variable | Rôle | Obligatoire |
+|---|---|---|
+| `PORT` | Port d'écoute | Non (défaut 3000) |
+| `DB_PATH` | Chemin du fichier SQLite | Non (défaut fourni par Docker Compose) |
+| `UPLOADS_PATH` | Dossier des jaquettes/screenshots | Non (défaut fourni par Docker Compose) |
+| `LLM_API_KEY_GEMINI` | Clé API Google Gemini | Non — requis seulement pour utiliser ce fournisseur |
+| `LLM_API_KEY_CLAUDE` | Clé API Anthropic Claude | Non — idem |
+| `LLM_API_KEY_OPENAI` | Clé API OpenAI | Non — idem |
+| `LLM_API_KEY_MISTRAL` | Clé API Mistral AI | Non — idem |
 
 Où obtenir une clé API :
 
@@ -40,26 +124,16 @@ Où obtenir une clé API :
 | OpenAI ChatGPT | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | Mistral AI | [console.mistral.ai](https://console.mistral.ai/) |
 
-⚠️ **La clé API est stockée en clair dans le `localStorage` de ton navigateur**, comme le reste des données de l'application (il n'y a pas de backend pour la protéger autrement). C'est adapté à un usage strictement personnel, sur un ordinateur qui t'appartient. Ne l'utilise pas sur un poste partagé ou public, et révoque la clé depuis la console du fournisseur si besoin.
+⚠️ **Après avoir modifié `.env`, redémarre le conteneur** (`docker compose restart`) pour que la nouvelle clé soit prise en compte — elle n'est lue qu'au démarrage du serveur, jamais stockée en base de données ni renvoyée par l'API.
 
-### Utiliser les recommandations
+Dans l'application, le bouton **⚙️ Configurer l'IA** permet uniquement de choisir le fournisseur actif et le modèle — pas la clé, qui reste toujours côté fichier `.env`.
 
-1. Clique sur **✨ Recommander** : l'application envoie ton inventaire (titres, styles, heures, notes) au LLM configuré et affiche 10 jeux suggérés sous forme de cartes, avec un score de correspondance coloré (vert ≥70%, ambre 40-69%, rouge <40%).
-2. Pour chaque jeu, tu peux :
-   - ajuster le score avec un curseur,
-   - cocher "le style visuel me déplaît",
-   - cocher "déjà fait".
-3. Tu peux aussi ajouter une précision libre en langage naturel dans la zone de texte (ex : *"le jeu à 88% a l'air cool mais les combats en temps réel me stressent en ce moment"*).
-4. Clique sur **🔄 Affiner** : le LLM reçoit tes retours et propose une nouvelle liste recalibrée en conséquence.
+## Troubleshooting
 
-### Auto-détection de style
-
-Dans la fiche d'édition d'un jeu, le bouton **🤖 Auto-détecter le style** demande au LLM de déduire le(s) style(s) du jeu à partir de son titre (et de sa console), en réutilisant en priorité les styles déjà présents dans ta base.
-
-## Sauvegarde de tes données
-
-- **Export Markdown (.md)** : lisible par un humain, pratique pour partager ou archiver l'inventaire (n'inclut pas les images).
-- **Export SQLite (.sqlite)** : sauvegarde complète, incluant jaquettes et screenshots. À faire régulièrement, surtout si l'app t'avertit que le stockage local commence à être volumineux.
+- **Le conteneur ne démarre pas** : `docker compose logs` pour voir l'erreur exacte.
+- **Mes données de l'ancienne version (fichier `MyGameDB_Local_v5.html`) ont disparu** : elles n'ont pas disparu, mais elles vivaient dans le `localStorage` de ton navigateur — la nouvelle version utilise une vraie base sur disque. Si besoin, exporte l'ancienne base depuis l'ancien fichier HTML puis importe-la via **📂 Importer (.sqlite)** dans la nouvelle version.
+- **Aucune clé API configurée pour un fournisseur** : voir la section [Configuration](#configuration) ci-dessus.
+- Pour les problèmes spécifiques au backend, au frontend ou à la base de données, voir le README du dossier concerné (chacun a sa propre section Troubleshooting).
 
 ## Licence
 

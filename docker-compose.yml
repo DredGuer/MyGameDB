@@ -1,0 +1,16 @@
+services:
+  mygamedb:
+    build: .
+    container_name: mygamedb
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./bdd:/app/bdd
+      - ./storage/uploads:/app/storage/uploads
+    env_file:
+      - .env
+    environment:
+      - DB_PATH=/app/bdd/collection.sqlite
+      - UPLOADS_PATH=/app/storage/uploads
+      - PORT=3000
+    restart: unless-stopped

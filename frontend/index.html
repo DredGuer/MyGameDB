@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyGameDB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes confetti-fall {
+            0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(110vh) rotate(720deg); opacity: 0.9; }
+        }
+        @keyframes toast-in {
+            0% { transform: translate(-50%, -40px) scale(0.9); opacity: 0; }
+            12% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            88% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -40px) scale(0.9); opacity: 0; }
+        }
+        .confetti-piece {
+            position: fixed;
+            top: -10px;
+            opacity: 0.9;
+            pointer-events: none;
+            z-index: 9998;
+            animation: confetti-fall linear forwards;
+        }
+        .celebration-toast {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            z-index: 10000;
+            animation: toast-in 3s ease-in-out forwards;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-6 font-sans">
+
+    <div class="max-w-6xl mx-auto space-y-8">
+
+        <header class="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-700 pb-4 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-indigo-400 flex items-center gap-2">
+                    🎮 MyGameDB
+                    <span id="ws-status-dot" class="inline-block w-2 h-2 rounded-full bg-rose-500" title="Connexion en cours..."></span>
+                </h1>
+                <p class="text-slate-400 text-sm">Styles de jeu, dates de possession et analyse par âge</p>
+            </div>
+            <div class="flex flex-wrap gap-2 w-full lg:w-auto">
+                <label class="flex-1 lg:flex-none bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm px-4 py-2 rounded shadow transition font-medium flex items-center justify-center gap-2 cursor-pointer border border-slate-600">
+                    📂 Importer (.sqlite)
+                    <input type="file" id="import-db-file" accept=".sqlite" class="hidden" onchange="importDB(this)">
+                </label>
+                <button onclick="exportMarkdown()" class="flex-1 lg:flex-none bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded shadow transition font-medium flex items-center justify-center gap-2">
+                    📄 Exporter en Markdown (.md)
+                </button>
+                <button onclick="exportDB()" class="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-2 rounded shadow transition font-medium flex items-center justify-center gap-2">
+                    💾 Sauvegarder la Base (.sqlite)
+                </button>
+            </div>
+        </header>
+
+        <!-- Dashboard statistiques -->
+        <div class="flex items-center justify-end gap-2 text-xs text-slate-400 flex-wrap">
+            <label for="hours-per-day-input">⏱️ Base de conversion :</label>
+            <input type="number" id="hours-per-day-input" min="1" max="24" step="0.5" value="8"
+                class="w-16 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-center focus:outline-none focus:border-indigo-500">
+            <span>h / jour</span>
+            <span class="mx-1 text-slate-700">|</span>
+            <label for="birthdate-input">🎂 Date de naissance :</label>
+            <input type="date" id="birthdate-input"
+                class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs focus:outline-none focus:border-indigo-500">
+        </div>
+        <div id="dashboard-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+        <div id="dashboard-breakdown"></div>
+        <div id="dashboard-genre-stats"></div>
+        <div id="dashboard-age-genre"></div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg flex flex-col justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-200 mb-2">1. Créer une Famille</h2>
+                    <p class="text-xs text-slate-400 mb-4">Regroupe tes futurs modèles (ex: Nintendo, Sony, Microsoft...)</p>
+                    <form id="form-family" class="space-y-3">
+                        <div>
+                            <input type="text" id="family-name" placeholder="ex: Nintendo" required
+                                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded text-sm font-medium transition">
+                            Créer la famille
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg flex flex-col justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-200 mb-2">2. Créer une Console</h2>
+                    <p class="text-xs text-slate-400 mb-4">Associe un modèle précis à une famille existante.</p>
+                    <form id="form-console" class="space-y-3">
+                        <div>
+                            <select id="console-family-select" required class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                                <option value="">-- Sélectionner la famille --</option>
+                            </select>
+                        </div>
+                        <div>
+                            <input type="text" id="console-name" placeholder="ex: GameBoy Color, Switch, PS5..." required
+                                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded text-sm font-medium transition">
+                            Créer la console
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg flex flex-col justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-200 mb-2">3. Enregistrer un Jeu</h2>
+                    <p class="text-xs text-slate-400 mb-4">Ajoute ton jeu sur la console de ton choix.</p>
+                    <form id="form-game" class="space-y-3">
+                        <div>
+                            <select id="game-console" required class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                                <option value="">-- Sélectionner la console --</option>
+                            </select>
+                        </div>
+                        <div>
+                            <input type="text" id="game-title" placeholder="Titre du jeu" required
+                                class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <select id="game-platform" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                                <option value="Physique">📀 Physique</option>
+                                <option value="Dématérialisé">☁️ Dématérialisé</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-3 items-end">
+                            <div class="flex-1">
+                                <input type="number" id="game-hours" placeholder="Heures" min="0" required
+                                    class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-mono">
+                            </div>
+                            <label class="flex items-center gap-2 cursor-pointer text-sm bg-slate-900 border border-slate-600 h-[38px] px-3 rounded select-none">
+                                <input type="checkbox" id="game-completed" class="w-4 h-4 rounded accent-indigo-500">
+                                <span>Terminé</span>
+                            </label>
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded text-sm font-medium transition">
+                            Enregistrer le jeu
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Barre de recherche / filtres / tri -->
+        <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg flex flex-col md:flex-row gap-3">
+            <input type="text" id="search-input" placeholder="🔍 Rechercher un jeu..."
+                class="flex-1 bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+            <select id="filter-status" class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">
+                <option value="all">Tous les statuts</option>
+                <option value="ongoing">⏳ En cours</option>
+                <option value="completed">✅ Terminés</option>
+            </select>
+            <select id="sort-by" class="bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm">
+                <option value="title">Trier : Titre (A-Z)</option>
+                <option value="hours">Trier : Heures (desc)</option>
+                <option value="rating">Trier : Note (desc)</option>
+                <option value="date">Trier : Date d'ajout (récent)</option>
+            </select>
+            <button onclick="manageGenres()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">🏷️ Gérer les styles</button>
+        </div>
+
+        <!-- Recommandations IA -->
+        <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-200">🤖 Recommandations IA</h2>
+                    <p class="text-xs text-slate-400">Analyse ta collection et propose 9 jeux personnalisés en 3 tiers (Cœur de Cible, Périphérique, Exotique), avec un score de correspondance ajustable. Les jeux déjà proposés ne sont jamais repris.</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="openLlmSettingsModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">⚙️ Configurer l'IA</button>
+                    <button onclick="openRecommendationHistoryModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">📜 Historique</button>
+                    <button id="btn-generate-recommendations" onclick="generateRecommendations()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded whitespace-nowrap">✨ Recommander</button>
+                </div>
+            </div>
+            <p id="recommendations-status" class="text-xs text-indigo-300"></p>
+            <div id="recommendations-container" class="space-y-6">
+                <p class="text-slate-500 text-sm italic">Aucune recommandation pour le moment. Clique sur ✨ Recommander pour lancer une première analyse.</p>
+            </div>
+            <div class="border-t border-slate-700 pt-4 space-y-2">
+                <label class="text-xs text-slate-400">Autre précision (langage naturel, ex : "le jeu à 88% a l'air cool mais le temps réel me stresse en ce moment")</label>
+                <textarea id="recommendations-global-feedback" rows="2" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm"></textarea>
+                <button id="btn-refine-recommendations" onclick="refineRecommendations()" class="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm py-2 rounded font-medium">🔄 Affiner</button>
+            </div>
+        </div>
+
+        <div id="main-container" class="space-y-8">
+            </div>
+
+    </div>
+
+    <!-- Modal générique (édition Famille / Console / Jeu) -->
+    <div id="modal-overlay" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto p-6" onclick="event.stopPropagation()">
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/ws-client.js"></script>
+    <script src="js/llm-ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

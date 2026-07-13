@@ -1,0 +1,37 @@
+# js — Modules JavaScript du frontend
+
+## Table des Matières
+
+1. [Journal des Mises à Jour](/CHANGELOG.md)
+3. [Fonctionnalités Principales](#fonctionnalités-principales)
+5. [Index du Projet](#index-du-projet)
+8. [Architecture Complète](#architecture-complète)
+13. [Troubleshooting](#troubleshooting)
+
+## Fonctionnalités Principales
+
+Quatre fichiers chargés séquentiellement (balises `<script>` classiques, pas de modules ES, pas de bundler) :
+
+1. `api.js` — doit être chargé en premier (définit `CLIENT_ID` et l'objet global `api`).
+2. `ws-client.js` — dépend de `CLIENT_ID` (défini dans `api.js`).
+3. `llm-ui.js` — dépend de `api`, `openModal`/`closeModal`/`escapeHtml` (définis dans `app.js`, donc **chargé avant** `app.js` mais les fonctions qu'il utilise sont hissées par le navigateur au moment de l'exécution effective des handlers, pas au chargement).
+4. `app.js` — dernier chargé, appelle `initApp()` à la fin du fichier pour démarrer l'application.
+
+## Index du Projet
+
+```
+js/
+├── api.js          # Wrapper fetch() + CLIENT_ID
+├── ws-client.js     # WebSocket + reconnexion + dispatch
+├── llm-ui.js        # Modales LLM + recommandations
+└── app.js           # Rendu principal + handlers CRUD + point d'entrée (initApp)
+```
+
+## Architecture Complète
+
+Aucun state management formel : chaque mutation déclenche un nouvel appel à `render()` (ou à une sous-fonction ciblée) qui re-fetch les données nécessaires et régénère le HTML correspondant. Ce choix est délibéré — cohérent avec le pattern déjà en place dans l'ancienne version front-end, et suffisant pour le volume de données d'un usage personnel.
+
+## Troubleshooting
+
+- **`api is not defined` / `CLIENT_ID is not defined`** : vérifier l'ordre des balises `<script>` dans `index.html` — `api.js` doit toujours être chargé en premier.
+- **Un handler `onclick` inline échoue silencieusement** : ouvrir la console navigateur, la plupart des fonctions sont `async` et une exception non catchée dans un handler `onclick` n'interrompt pas la page mais logue l'erreur.

@@ -1,20 +1,15 @@
-.DS_Store
+node_modules
+backend/node_modules
+.git
+.env
 Suavegarde de version/
-
-# Données réelles utilisateur — jamais commitées
 bdd/*.sqlite
 bdd/*.sqlite-journal
 bdd/*.sqlite-wal
 bdd/*.sqlite-shm
-
-# Secrets
-.env
-
-# Dépendances / build
-node_modules/
-
-# Uploads utilisateur (jaquettes, screenshots) — contenu jamais commité
 storage/uploads/covers/*
 storage/uploads/screenshots/*
 !storage/uploads/covers/.gitkeep
 !storage/uploads/screenshots/.gitkeep
+*.md
+.DS_Store
