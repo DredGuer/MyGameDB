@@ -179,6 +179,7 @@
                 </div>
                 <div class="flex gap-2">
                     <button onclick="openLlmSettingsModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">⚙️ Configurer l'IA</button>
+                    <button onclick="openRecommendationHistoryModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-4 py-2 rounded whitespace-nowrap">📜 Historique</button>
                     <button id="btn-generate-recommendations" onclick="generateRecommendations()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded whitespace-nowrap">✨ Recommander</button>
                 </div>
             </div>
@@ -1563,6 +1564,38 @@ Fournis exactement 9 entrées : 4 "coeur_de_cible", 2 "peripherique", 3 "exotiqu
                 md += `- ${title}${(score !== null && score !== undefined) ? ` (score ${score}%)` : ''}\n`;
             });
             return md;
+        }
+
+        // Affiche la liste cumulée de tous les jeux déjà proposés (toutes sessions confondues),
+        // avec la date de première proposition. Permet aussi de vider l'historique si l'utilisateur
+        // veut autoriser le LLM à reproposer d'anciens titres.
+        function openRecommendationHistoryModal() {
+            const res = db.exec("SELECT title, match_score, MIN(created_at) as first_seen FROM recommendation_history GROUP BY title ORDER BY first_seen DESC");
+            const rows = res.length ? res[0].values : [];
+
+            const listHtml = rows.map(([title, score, firstSeen]) => `
+                <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded px-3 py-2">
+                    <span class="text-sm text-slate-200">${escapeHtml(title)}</span>
+                    <span class="text-xs text-slate-500 font-mono">${(score !== null && score !== undefined) ? score + '%' : '—'} · ${escapeHtml(firstSeen || '')}</span>
+                </div>
+            `).join('');
+
+            openModal(`
+                <h3 class="text-xl font-bold text-indigo-300 mb-1">📜 Historique des recommandations</h3>
+                <p class="text-xs text-slate-500 mb-4">Tous les jeux déjà proposés par l'IA depuis le début. Ils ne sont plus reproposés lors des futures générations tant qu'ils restent ici.</p>
+                <div class="space-y-2 mb-4 max-h-96 overflow-y-auto">${listHtml || '<p class="text-slate-500 text-sm italic">Aucun historique pour le moment.</p>'}</div>
+                <div class="flex justify-between gap-2">
+                    ${rows.length > 0 ? `<button onclick="clearRecommendationHistory()" class="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded text-sm">🗑️ Vider l'historique</button>` : '<span></span>'}
+                    <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Fermer</button>
+                </div>
+            `);
+        }
+
+        function clearRecommendationHistory() {
+            if (!confirm("Vider tout l'historique des recommandations ? Le LLM pourra à nouveau proposer d'anciens jeux.")) return;
+            db.run("DELETE FROM recommendation_history");
+            saveToLocalStorage();
+            openRecommendationHistoryModal();
         }
 
         function setRecommendationsLoading(isLoading, message) {
