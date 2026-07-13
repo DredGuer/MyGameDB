@@ -41,6 +41,10 @@ async function openLlmSettingsModal() {
                     ? '✅ Une clé API est configurée pour ce fournisseur (côté serveur, jamais visible ici).'
                     : "⚠️ Aucune clé API configurée pour ce fournisseur. Ajoute-la dans le fichier .env du serveur (LLM_API_KEY_" + settings.provider.toUpperCase() + ") puis redémarre le serveur."}
             </p>
+            <div class="border-t border-slate-700 pt-3">
+                <button id="btn-test-llm-connection" onclick="testLlmConnection()" class="w-full bg-slate-700 hover:bg-slate-600 text-white py-2 rounded text-sm font-medium">🔌 Tester la connexion</button>
+                <p id="llm-test-result" class="text-xs mt-2"></p>
+            </div>
         </div>
         <div class="flex justify-end gap-2 mt-5">
             <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Annuler</button>
@@ -54,6 +58,31 @@ async function saveLlmSettings() {
     const model = document.getElementById('llm-model-input').value.trim();
     await api.setLlmSettings(provider, model);
     closeModal();
+}
+
+// Teste la connexion au fournisseur LLM ACTUELLEMENT enregistré (pas le
+// select non sauvegardé de la modale) — envoie un prompt minimal et vérifie
+// la réponse, plus fiable qu'un simple contrôle de présence de clé.
+async function testLlmConnection() {
+    const btn = document.getElementById('btn-test-llm-connection');
+    const resultEl = document.getElementById('llm-test-result');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Test en cours...';
+    resultEl.textContent = '';
+    try {
+        const result = await api.testLlmConnection();
+        if (result.success) {
+            resultEl.innerHTML = `<span class="text-emerald-400">✅ Connexion réussie (${result.provider}, ${result.model}, ${result.latencyMs}ms).</span>`;
+        } else {
+            resultEl.innerHTML = `<span class="text-rose-400">❌ Échec : ${escapeHtml(result.message)}</span>`;
+        }
+    } catch (err) {
+        resultEl.innerHTML = `<span class="text-rose-400">❌ Erreur : ${escapeHtml(err.message)}</span>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
 }
 
 async function openRecommendationHistoryModal() {
@@ -218,6 +247,99 @@ async function renderRecommendations() {
     }
 
     container.innerHTML = html;
+}
+
+// --- Modale "État des connexions" : vue d'ensemble LLM + Steam avec test à la demande ---
+async function openConnectionsStatusModal() {
+    const [llmSettings, steamStatus] = await Promise.all([
+        api.getLlmSettings(),
+        api.getSteamStatus().catch(() => null)
+    ]);
+
+    const llmBadge = llmSettings.hasApiKey
+        ? '<span class="text-emerald-400">✅ Clé configurée</span>'
+        : '<span class="text-amber-400">⚠️ Pas de clé</span>';
+
+    const steamConfigured = steamStatus?.configured;
+    const steamBadge = steamConfigured
+        ? '<span class="text-emerald-400">✅ Configuré</span>'
+        : '<span class="text-amber-400">⚠️ Non configuré</span>';
+
+    const steamLastSync = steamStatus?.lastSyncAt
+        ? `Dernière synchro : ${new Date(steamStatus.lastSyncAt).toLocaleString('fr-FR')}`
+        : 'Aucune synchronisation effectuée pour le moment.';
+    const steamLastError = steamStatus?.lastSyncError
+        ? `<p class="text-rose-400 text-[10px] mt-1">Dernière erreur : ${escapeHtml(steamStatus.lastSyncError)}</p>`
+        : '';
+
+    openModal(`
+        <h3 class="text-xl font-bold text-indigo-300 mb-4">🔌 État des connexions</h3>
+        <div class="space-y-4">
+            <div class="bg-slate-900 border border-slate-700 rounded-lg p-3">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-sm font-semibold text-slate-200">🤖 IA (${escapeHtml(llmSettings.provider)})</span>
+                    ${llmBadge}
+                </div>
+                <p class="text-[10px] text-slate-500 mb-2">Modèle : ${escapeHtml(llmSettings.model)}</p>
+                <button id="btn-status-test-llm" onclick="testLlmConnectionFromStatus()" class="w-full bg-slate-700 hover:bg-slate-600 text-white py-1.5 rounded text-xs font-medium">🔌 Tester la connexion</button>
+                <p id="status-llm-test-result" class="text-xs mt-2"></p>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-700 rounded-lg p-3">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-sm font-semibold text-slate-200">🎮 Steam</span>
+                    ${steamBadge}
+                </div>
+                <p class="text-[10px] text-slate-500 mb-1">${escapeHtml(steamLastSync)}</p>
+                ${steamLastError}
+                ${steamConfigured
+                    ? `<button id="btn-status-test-steam" onclick="testSteamConnectionFromStatus()" class="w-full bg-slate-700 hover:bg-slate-600 text-white py-1.5 rounded text-xs font-medium mt-2">🔌 Tester la connexion</button>
+                       <p id="status-steam-test-result" class="text-xs mt-2"></p>`
+                    : `<p class="text-[10px] text-slate-500 mt-2">Renseigne STEAM_API_KEY et STEAM_ID dans le fichier .env du serveur pour activer la synchronisation.</p>`}
+            </div>
+        </div>
+        <div class="flex justify-end mt-5">
+            <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Fermer</button>
+        </div>
+    `);
+}
+
+async function testLlmConnectionFromStatus() {
+    const btn = document.getElementById('btn-status-test-llm');
+    const resultEl = document.getElementById('status-llm-test-result');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Test en cours...';
+    try {
+        const result = await api.testLlmConnection();
+        resultEl.innerHTML = result.success
+            ? `<span class="text-emerald-400">✅ Connexion réussie (${result.model}, ${result.latencyMs}ms).</span>`
+            : `<span class="text-rose-400">❌ ${escapeHtml(result.message)}</span>`;
+    } catch (err) {
+        resultEl.innerHTML = `<span class="text-rose-400">❌ Erreur : ${escapeHtml(err.message)}</span>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+}
+
+async function testSteamConnectionFromStatus() {
+    const btn = document.getElementById('btn-status-test-steam');
+    const resultEl = document.getElementById('status-steam-test-result');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Test en cours...';
+    try {
+        const result = await api.testSteamConnection();
+        resultEl.innerHTML = result.success
+            ? `<span class="text-emerald-400">✅ Connexion réussie (${result.gameCount} jeu(x) détecté(s), ${result.latencyMs}ms).</span>`
+            : `<span class="text-rose-400">❌ ${escapeHtml(result.message)}</span>`;
+    } catch (err) {
+        resultEl.innerHTML = `<span class="text-rose-400">❌ Erreur : ${escapeHtml(err.message)}</span>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
 }
 
 // Auto-détection du style d'un jeu via le LLM (bouton dans la modale editGame)

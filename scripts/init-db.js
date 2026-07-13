@@ -12,6 +12,27 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 const { needsMigration, runMigration } = require('./migrate-to-multi-platform');
+const { DEFAULT_CATALOG } = require('./default-catalog');
+
+// Pré-remplit familles + consoles UNIQUEMENT si families est vide (nouvelle
+// base) — jamais sur une base ayant déjà ses propres noms (ex: "Playstation 1"
+// au lieu de "PlayStation"), pour ne jamais créer de doublon conceptuel.
+function seedDefaultCatalog(db) {
+    const familiesCount = db.prepare('SELECT COUNT(*) as c FROM families').get().c;
+    if (familiesCount > 0) return false;
+
+    const insertFamily = db.prepare('INSERT INTO families (name) VALUES (?)');
+    const insertConsole = db.prepare('INSERT INTO consoles (family_id, name) VALUES (?, ?)');
+
+    const seed = db.transaction(() => {
+        Object.entries(DEFAULT_CATALOG).forEach(([familyName, consoleNames]) => {
+            const info = insertFamily.run(familyName);
+            consoleNames.forEach((consoleName) => insertConsole.run(info.lastInsertRowid, consoleName));
+        });
+    });
+    seed();
+    return true;
+}
 
 function initDb(dbPath) {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -26,6 +47,10 @@ function initDb(dbPath) {
     const schemaPath = path.join(__dirname, '../backend/src/db/schema.sql');
     const schema = fs.readFileSync(schemaPath, 'utf-8');
     db.exec(schema);
+
+    if (seedDefaultCatalog(db)) {
+        console.log('Catalogue standard de familles/consoles pré-rempli (base vide détectée).');
+    }
 
     db.close();
     console.log(`Base initialisée/vérifiée : ${dbPath}`);

@@ -38,4 +38,31 @@ router.put('/', asyncHandler(async (req, res) => {
     });
 }));
 
+// Test de connexion réel : envoie un prompt minimal au fournisseur actuellement
+// configuré et vérifie qu'il répond correctement — pas juste que la clé est
+// présente (hasApiKey ne garantit pas qu'elle soit valide/non expirée/quota
+// épuisé). Réutilise callLLM() donc teste toujours le provider actif, cohérent
+// avec ce que /generate utilisera réellement.
+router.post('/test-connection', asyncHandler(async (req, res) => {
+    const provider = llmClient.getCurrentProvider();
+
+    if (!llmClient.hasApiKeyFor(provider)) {
+        return res.json({ data: { success: false, provider, message: `Aucune clé API configurée pour "${provider}".` } });
+    }
+
+    const started = Date.now();
+    const testSchema = {
+        name: 'submit_ping',
+        description: 'Confirme la réception.',
+        input_schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] }
+    };
+
+    try {
+        await llmClient.callLLM('Réponds STRICTEMENT en JSON {"ok": true}.', 'Ping de test de connexion.', testSchema);
+        res.json({ data: { success: true, provider, model: llmClient.getModelFor(provider), latencyMs: Date.now() - started } });
+    } catch (e) {
+        res.json({ data: { success: false, provider, message: e.message, latencyMs: Date.now() - started } });
+    }
+}));
+
 module.exports = router;

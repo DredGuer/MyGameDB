@@ -97,6 +97,7 @@ Fichiers servis statiquement via `GET /uploads/covers/:filename` et `GET /upload
 |---|---|---|---|
 | GET | `/api/llm-settings` | — | `{ provider, model, hasApiKey, availableProviders }` — ne renvoie jamais la clé |
 | PUT | `/api/llm-settings` | `{ provider, model }` | Change le fournisseur/modèle actif — **ne permet pas de définir une clé API** (voir `.env`) |
+| POST | `/api/llm-settings/test-connection` | — | Envoie un prompt minimal au fournisseur actuellement configuré et vérifie la réponse. `{ success, provider, model, latencyMs }` ou `{ success: false, message }` |
 
 ## Recommandations
 
@@ -132,5 +133,6 @@ Fichiers servis statiquement via `GET /uploads/covers/:filename` et `GET /upload
 |---|---|---|
 | GET | `/api/steam/status` | `{ configured, lastSyncAt, lastSyncReport, lastSyncError }` — ne renvoie jamais la clé API ni le SteamID |
 | POST | `/api/steam/sync` | Déclenche une synchronisation immédiate, renvoie `{ created, updated, skipped, errors }` |
+| POST | `/api/steam/test-connection` | Appelle l'API Steam en lecture seule (aucune écriture en base) pour vérifier les credentials. `{ success, gameCount, latencyMs }` ou `{ success: false, message }` |
 
 Synchronisation aussi déclenchée automatiquement au démarrage du serveur puis toutes les `STEAM_SYNC_INTERVAL_HOURS` heures (voir `.env.example`), si `STEAM_API_KEY`/`STEAM_ID` sont configurés.

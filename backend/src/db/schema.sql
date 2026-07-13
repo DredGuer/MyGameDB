@@ -139,3 +139,9 @@ INSERT OR IGNORE INTO genres (name) VALUES
     ('Action'), ('Aventure'), ('RPG'), ('Stratégie'), ('FPS'),
     ('Plateforme'), ('Sport'), ('Course'), ('Simulation'), ('Puzzle'),
     ('Party Game'), ('Survie/Horreur'), ('MOBA'), ('MMO'), ('Rythme/Musical');
+
+-- Le catalogue standard de familles/consoles (Sony, Nintendo, Microsoft,
+-- SEGA, Atari, PC, Mobile, Web...) est pré-rempli par scripts/init-db.js
+-- (seedDefaultCatalog()), UNIQUEMENT si families est vide au démarrage —
+-- pas ici, car la condition "base vide" est plus fiable à exprimer en JS
+-- qu'en SQL pur dans un fichier ré-exécuté idempotent à chaque démarrage.

@@ -128,6 +128,7 @@ const api = {
     // Réglages LLM
     getLlmSettings: () => apiFetch('GET', '/api/llm-settings'),
     setLlmSettings: (provider, model) => apiFetch('PUT', '/api/llm-settings', { provider, model }),
+    testLlmConnection: () => apiFetch('POST', '/api/llm-settings/test-connection'),
 
     // Recommandations
     getRecommendations: () => apiFetch('GET', '/api/recommendations'),
@@ -146,6 +147,7 @@ const api = {
     // Steam
     getSteamStatus: () => apiFetch('GET', '/api/steam/status'),
     syncSteam: () => apiFetch('POST', '/api/steam/sync'),
+    testSteamConnection: () => apiFetch('POST', '/api/steam/test-connection'),
 
     // Backup
     exportSqliteUrl: () => '/api/backup/sqlite',

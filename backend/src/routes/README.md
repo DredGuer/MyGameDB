@@ -24,11 +24,11 @@ routes/
 ├── screenshots.routes.js       # upload multipart, stockage sur disque
 ├── covers.routes.js            # upload multipart jaquettes
 ├── settings.routes.js          # date de naissance
-├── llmSettings.routes.js       # provider/modèle uniquement (jamais la clé API)
+├── llmSettings.routes.js       # provider/modèle uniquement (jamais la clé API) + test-connection
 ├── recommendations.routes.js   # génération, raffinement, feedback, historique
 ├── dashboard.routes.js         # agrégations statistiques
 ├── backup.routes.js            # export/import .sqlite, export Markdown
-└── steam.routes.js             # statut + déclenchement de la synchronisation Steam
+└── steam.routes.js             # statut + déclenchement de la synchronisation Steam + test-connection
 ```
 
 ## API Endpoints
