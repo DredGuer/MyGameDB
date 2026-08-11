@@ -47,6 +47,35 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 // --- Périodes de possession console ---
 
+// Requête agrégée unique (anti N+1) : toutes les périodes de toutes les
+// consoles d'un coup, groupées par famille — sert la vue "Mon matériel"
+// sans avoir à faire un appel par console.
+router.get('/ownership-periods/all', asyncHandler(async (req, res) => {
+    const rows = db.prepare(`
+        SELECT c.id as console_id, c.name as console_name, f.name as family_name,
+               p.id, p.date_start, p.date_end, p.model, p.serial_number
+        FROM consoles c
+        JOIN families f ON f.id = c.family_id
+        LEFT JOIN console_ownership_periods p ON p.console_id = c.id
+        ORDER BY f.name ASC, c.name ASC, p.date_start ASC
+    `).all();
+
+    const byConsole = {};
+    rows.forEach((r) => {
+        if (!byConsole[r.console_id]) {
+            byConsole[r.console_id] = { console_id: r.console_id, console_name: r.console_name, family_name: r.family_name, periods: [] };
+        }
+        if (r.id) {
+            byConsole[r.console_id].periods.push({
+                id: r.id, date_start: r.date_start, date_end: r.date_end,
+                model: r.model, serial_number: r.serial_number
+            });
+        }
+    });
+
+    res.json({ data: Object.values(byConsole) });
+}));
+
 router.get('/:id/ownership-periods', asyncHandler(async (req, res) => {
     const periods = db.prepare(
         'SELECT id, date_start, date_end, model, serial_number FROM console_ownership_periods WHERE console_id = ? ORDER BY date_start ASC'

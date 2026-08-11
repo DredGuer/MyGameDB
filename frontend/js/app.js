@@ -358,12 +358,16 @@ async function addConsoleOwnershipPeriod(consoleId) {
     const serial = document.getElementById('new-period-console-serial').value.trim() || null;
     if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
     await api.addConsoleOwnershipPeriod(consoleId, start, end, model, serial);
-    render();
+    // render() doit être attendu avant de rouvrir la modale : sinon la
+    // reconstruction du DOM en arrière-plan peut interférer avec l'appel
+    // à openModal() fait par editConsole() (même défaut déjà corrigé pour
+    // addGamePlatformInline).
+    await render();
     editConsole(consoleId);
 }
 async function deleteConsoleOwnershipPeriod(periodId, consoleId) {
     await api.deleteConsoleOwnershipPeriod(periodId);
-    render();
+    await render();
     editConsole(consoleId);
 }
 async function saveConsoleEdit(id) {
@@ -421,7 +425,7 @@ async function createGenreStandalone() {
 async function deleteGenre(id) {
     if (!confirm("Supprimer ce style ? Il sera retiré de tous les jeux qui l'utilisaient.")) return;
     await api.deleteGenre(id);
-    render();
+    await render();
     manageGenres();
 }
 async function toggleGameGenre(gameId, genreId, isActive) {
@@ -430,7 +434,7 @@ async function toggleGameGenre(gameId, genreId, isActive) {
     } else {
         await api.addGameGenre(gameId, genreId);
     }
-    render();
+    await render();
     editGame(gameId);
 }
 async function addNewGenreInline(gameId) {
@@ -440,7 +444,7 @@ async function addNewGenreInline(gameId) {
     try {
         const genre = await api.createGenre(name);
         await api.addGameGenre(gameId, genre.id);
-        render();
+        await render();
         editGame(gameId);
     } catch (err) {
         alert(err.code === 'CONFLICT' ? 'Ce style existe déjà ! Sélectionne-le directement dans la liste des tags.' : err.message);
@@ -627,7 +631,7 @@ async function savePlatformInstance(gameId, platformInstanceId) {
 
     const wasCompleted = (gamesCache[platformInstanceId] && gamesCache[platformInstanceId].completed) || 0;
     const result = await api.updateGamePlatform(gameId, platformInstanceId, { hours, completed, platform_type: platformType });
-    render();
+    await render();
     editGame(platformInstanceId);
 
     if (!wasCompleted && result.completed) {
@@ -701,7 +705,7 @@ async function handleCoverUpload(gameId, side, input) {
     if (!file) return;
     try {
         await api.uploadCover(gameId, side, file);
-        render();
+        await render();
         editGame(gameId);
     } catch (e) {
         alert("Erreur lors de l'envoi de l'image.");
@@ -711,7 +715,7 @@ async function handleCoverUpload(gameId, side, input) {
 async function removeCover(gameId, side) {
     if (!confirm('Supprimer cette jaquette ?')) return;
     await api.deleteCover(gameId, side);
-    render();
+    await render();
     editGame(gameId);
 }
 
@@ -725,7 +729,7 @@ async function addScreenshot(gameId) {
 
     try {
         await api.addScreenshot(gameId, file, titleInput.value.trim(), descInput.value.trim());
-        render();
+        await render();
         editGame(gameId);
     } catch (e) {
         alert("Erreur lors de l'envoi de l'image.");
@@ -742,7 +746,7 @@ async function saveScreenshotCaption(ssId, btnEl) {
 async function deleteScreenshot(ssId, gameId) {
     if (!confirm('Supprimer ce screenshot ?')) return;
     await api.deleteScreenshot(ssId);
-    render();
+    await render();
     editGame(gameId);
 }
 

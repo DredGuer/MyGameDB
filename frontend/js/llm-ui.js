@@ -287,6 +287,61 @@ async function renderRecommendations() {
     container.innerHTML = html;
 }
 
+// --- Modale "Mon matériel" : toutes les consoles avec leur historique de
+// possession (dates, modèle, numéro de série) en un seul endroit, pour
+// retrouver un numéro de série sans avoir à rouvrir chaque console une par une. ---
+async function openHardwareModal() {
+    const consoles = await api.getAllConsoleOwnershipPeriods();
+
+    const groupsByFamily = {};
+    consoles.forEach((c) => {
+        (groupsByFamily[c.family_name] ||= []).push(c);
+    });
+
+    const sectionsHtml = Object.entries(groupsByFamily).map(([familyName, list]) => {
+        const consolesHtml = list.map((c) => {
+            if (c.periods.length === 0) {
+                return `
+                    <div class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
+                        <p class="text-sm font-medium text-slate-200">🕹️ ${escapeHtml(c.console_name)}</p>
+                        <p class="text-slate-500 text-xs italic mt-0.5">Aucune période de possession enregistrée.</p>
+                    </div>
+                `;
+            }
+            const periodsHtml = c.periods.map((p) => {
+                const detailsParts = [];
+                if (p.model) detailsParts.push(`📦 ${escapeHtml(p.model)}`);
+                if (p.serial_number) detailsParts.push(`🔢 ${escapeHtml(p.serial_number)}`);
+                const detailsHtml = detailsParts.length ? ` <span class="text-slate-500">· ${detailsParts.join(' · ')}</span>` : '';
+                return `<div class="text-xs text-slate-300">${p.date_start || '?'} → ${p.date_end || 'en cours'}${detailsHtml}</div>`;
+            }).join('');
+            return `
+                <div class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
+                    <p class="text-sm font-medium text-slate-200 mb-1">🕹️ ${escapeHtml(c.console_name)}</p>
+                    <div class="space-y-0.5">${periodsHtml}</div>
+                </div>
+            `;
+        }).join('');
+        return `
+            <div class="space-y-2">
+                <h4 class="text-xs uppercase tracking-wider text-indigo-300/80 font-semibold">${escapeHtml(familyName)}</h4>
+                <div class="space-y-2">${consolesHtml}</div>
+            </div>
+        `;
+    }).join('');
+
+    openModal(`
+        <h3 class="text-xl font-bold text-indigo-300 mb-1">🗄️ Mon matériel</h3>
+        <p class="text-xs text-slate-500 mb-4">Toutes tes consoles avec leur historique de possession (modèle, numéro de série).</p>
+        <div class="space-y-5 max-h-[65vh] overflow-y-auto pr-1">
+            ${sectionsHtml || '<p class="text-slate-500 text-sm italic">Aucune console enregistrée pour le moment.</p>'}
+        </div>
+        <div class="flex justify-end mt-5">
+            <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded text-sm">Fermer</button>
+        </div>
+    `);
+}
+
 // --- Modale "État des connexions" : vue d'ensemble LLM + Steam avec test à la demande ---
 async function openConnectionsStatusModal() {
     const [llmSettings, steamStatus] = await Promise.all([
