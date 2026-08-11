@@ -5,7 +5,7 @@ Gestionnaire de collection de jeux vidéo, avec backend local et synchronisation
 ## Table des Matières
 
 1. [Journal des Mises à Jour](CHANGELOG.md)
-2. [Nouveautés v2.0.0 — Backend Docker + synchronisation temps réel](#nouveautés-v200--backend-docker--synchronisation-temps-réel)
+2. [Nouveautés v3.0.0 — Multi-plateforme, Steam et identité visuelle](#nouveautés-v300--multi-plateforme-steam-et-identité-visuelle)
 3. [Fonctionnalités Principales](#fonctionnalités-principales)
 5. [Index du Projet](#index-du-projet)
 6. [Démarrage Rapide](#démarrage-rapide)
@@ -17,16 +17,14 @@ Gestionnaire de collection de jeux vidéo, avec backend local et synchronisation
 12. [Configuration](#configuration)
 13. [Troubleshooting](#troubleshooting)
 
-## Nouveautés v2.0.0 — Backend Docker + synchronisation temps réel
+## Nouveautés v3.0.0 — Multi-plateforme, Steam et identité visuelle
 
-L'application n'est plus un simple fichier HTML avec une base SQLite enfermée dans un navigateur (localStorage). Elle tourne désormais en **service permanent local via Docker**, avec :
+- **Un jeu peut être possédé sur plusieurs plateformes** (ex: PC et mobile) — la fiche jeu reste unique, chaque plateforme suit ses propres heures, statut et dates de possession (avec type d'acquisition : achat/prêt/location).
+- **Synchronisation automatique de ta bibliothèque Steam**, optionnelle, sans jamais écraser une correction manuelle.
+- **Catalogue standard de familles/consoles** pré-rempli sur une nouvelle installation, et vue **"🗄️ Mon matériel"** pour retrouver l'historique de possession de toutes tes consoles (modèle, numéro de série) en un seul endroit.
+- Tri individuel et repli par console, recommandations IA dans leur propre modale, identité visuelle propre au projet.
 
-- Une base de données SQLite **sur disque**, indépendante de tout navigateur — plus de perte de données en changeant de Chrome vers Firefox, ou en vidant le cache.
-- Un accès via `http://localhost:3000` depuis n'importe quel navigateur de la machine (et du réseau local).
-- **Synchronisation en temps réel** : ouvre l'app sur ton PC et ton téléphone en même temps — coche "Terminé" sur l'un, ça se met à jour instantanément sur l'autre, sans recharger la page.
-- Les clés API des fournisseurs LLM ne transitent plus jamais par le navigateur ni la base de données — elles restent dans un fichier `.env` local, jamais partagé.
-
-Voir [CHANGELOG.md](CHANGELOG.md) pour le détail complet.
+Voir [CHANGELOG.md](CHANGELOG.md) pour le détail complet, y compris la v2.0.0 (migration vers un backend Docker avec synchronisation temps réel).
 
 ## Fonctionnalités Principales
 
