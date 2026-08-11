@@ -54,7 +54,7 @@ La stack a été choisie pour sa simplicité et sa pérennité (voir `backend/RE
 
 ## Arborescence du Projet
 
-*(Dernière mise à jour : 2026-07-13, refonte multi-plateforme + synchronisation Steam)*
+*(Dernière mise à jour : 2026-08-11, volet financier des périodes de possession)*
 
 ```
 .
@@ -108,7 +108,8 @@ La stack a été choisie pour sa simplicité et sa pérennité (voir `backend/RE
 │       │   │   ├── steamSync.js       # Matching jeu<->plateforme + règle de conflit (max heures)
 │       │   │   └── steamScheduler.js  # Déclenchement démarrage + périodique (setInterval)
 │       │   ├── recommendationPrompts.js  # Prompts système + matrice 4/2/3
-│       │   └── markdownExport.js      # Génération de l'inventaire Markdown (par jeu, sous-tableau plateformes)
+│       │   ├── markdownExport.js      # Génération de l'inventaire Markdown (par jeu, sous-tableau plateformes)
+│       │   └── ownershipFinancials.js # Normalisation prix/vendeur/notes des périodes de possession
 │       ├── ws/
 │       │   ├── README.md
 │       │   └── hub.js                 # Registre de connexions + broadcast()

@@ -5,7 +5,7 @@ Gestionnaire de collection de jeux vidéo, avec backend local et synchronisation
 ## Table des Matières
 
 1. [Journal des Mises à Jour](CHANGELOG.md)
-2. [Nouveautés v3.0.0 — Multi-plateforme, Steam et identité visuelle](#nouveautés-v300--multi-plateforme-steam-et-identité-visuelle)
+2. [Nouveautés v3.1.0 — Prix, provenance et notes](#nouveautés-v310--prix-provenance-et-notes)
 3. [Fonctionnalités Principales](#fonctionnalités-principales)
 5. [Index du Projet](#index-du-projet)
 6. [Démarrage Rapide](#démarrage-rapide)
@@ -17,14 +17,13 @@ Gestionnaire de collection de jeux vidéo, avec backend local et synchronisation
 12. [Configuration](#configuration)
 13. [Troubleshooting](#troubleshooting)
 
-## Nouveautés v3.0.0 — Multi-plateforme, Steam et identité visuelle
+## Nouveautés v3.1.0 — Prix, provenance et notes
 
-- **Un jeu peut être possédé sur plusieurs plateformes** (ex: PC et mobile) — la fiche jeu reste unique, chaque plateforme suit ses propres heures, statut et dates de possession (avec type d'acquisition : achat/prêt/location).
-- **Synchronisation automatique de ta bibliothèque Steam**, optionnelle, sans jamais écraser une correction manuelle.
-- **Catalogue standard de familles/consoles** pré-rempli sur une nouvelle installation, et vue **"🗄️ Mon matériel"** pour retrouver l'historique de possession de toutes tes consoles (modèle, numéro de série) en un seul endroit.
-- Tri individuel et repli par console, recommandations IA dans leur propre modale, identité visuelle propre au projet.
+- **Combien tu l'as payé, à qui, et tout ce dont tu veux te souvenir** : chaque période de possession (console comme jeu) accepte désormais un prix d'achat, un prix de vente, l'interlocuteur (particulier, grande surface, magasin spécialisé, autre) et un champ libre pour les infos complémentaires — tout est optionnel.
+- Comme ces infos vivent sur les **périodes**, une console revendue puis rachetée garde l'historique complet de *chaque* cycle : ce que tu avais payé la première fois n'est jamais écrasé.
+- **Bilan gain/perte** automatique dès que l'achat et la revente sont renseignés, et **total dépensé par console** dans la vue "🗄️ Mon matériel".
 
-Voir [CHANGELOG.md](CHANGELOG.md) pour le détail complet, y compris la v2.0.0 (migration vers un backend Docker avec synchronisation temps réel).
+*(v3.0.0 : multi-plateforme, synchronisation Steam et identité visuelle — voir [CHANGELOG.md](CHANGELOG.md) pour le détail complet, y compris la v2.0.0.)*
 
 ## Fonctionnalités Principales
 
@@ -33,7 +32,8 @@ Voir [CHANGELOG.md](CHANGELOG.md) pour le détail complet, y compris la v2.0.0 (
 - Suivi des heures jouées, du statut (en cours / terminé), de la note, des styles/genres (tags combinables).
 - Jaquettes et screenshots par jeu (stockés en fichiers, pas en base64).
 - Dates de possession (par jeu+plateforme, et par console) avec **type d'acquisition** (achat, prêt, location), et pour les consoles : modèle et numéro de série par période — utile pour distinguer une console rachetée dans une variante différente. Analyse "styles de jeu par tranche d'âge" si tu renseignes ta date de naissance.
-- **Vue "Mon matériel"** : toutes tes consoles groupées par famille avec leur historique complet de possession en un seul endroit.
+- **Prix et provenance par période de possession** (optionnel) : prix d'achat, prix de vente, à qui / chez qui (particulier, grande surface, magasin spécialisé, autre) et champ libre pour les infos complémentaires. Le bilan gain/perte s'affiche dès que l'achat et la revente sont connus.
+- **Vue "Mon matériel"** : toutes tes consoles groupées par famille avec leur historique complet de possession (dates, modèle, numéro de série, prix, provenance) et le total dépensé par console.
 - **Synchronisation automatique de ta bibliothèque Steam** (optionnelle) : import et mise à jour périodique des jeux possédés et du temps de jeu, sans jamais écraser une correction manuelle (les heures ne peuvent qu'augmenter).
 - Export de l'inventaire en Markdown (`.md`) ou de la base complète en `.sqlite`, import d'une sauvegarde `.sqlite`.
 - **Recommandations IA** (Gemini, Claude, ChatGPT ou Mistral au choix) : 9 jeux personnalisés répartis en 3 tiers — 🔥 Cœur de Cible (valeurs sûres), 🌤️ Périphérique (qui testent tes limites), 🌀 Exotique Hors Cadre (rupture assumée) — avec boucle de feedback et affinement itératif.

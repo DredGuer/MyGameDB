@@ -22,6 +22,8 @@ Migration depuis l'ancien fichier unique `MyGameDB_Local_v5.html` (SQLite embarq
 
 Identiques à l'ancienne version front-end : gestion de familles/consoles/jeux, styles de jeu combinables, jaquettes et screenshots, dates de possession, dashboard avec analyse par tranche d'âge, recommandations IA en 3 tiers, export/import. Nouveauté : mise à jour en temps réel quand un autre onglet/appareil modifie les données.
 
+Les périodes de possession (consoles comme jeux) acceptent aussi un **volet financier optionnel** : prix d'achat et de vente, interlocuteur et son type (particulier, grande surface, magasin spécialisé, autre), et un champ libre pour les infos complémentaires. Le bloc est replié par défaut pour ne pas alourdir la saisie de simples dates.
+
 **Multi-plateforme** : un jeu peut désormais être possédé sur plusieurs plateformes (ex: sur PC et sur mobile). La création (formulaire "Enregistrer un Jeu") crée le jeu et sa première plateforme en un seul geste ; la modale d'édition d'un jeu propose ensuite une section "Plateformes possédées" pour en ajouter d'autres, chacune avec ses propres heures et statut "terminé".
 
 **Synchronisation Steam** : un bouton "🔄 Synchroniser Steam" apparaît dans l'en-tête si le serveur a `STEAM_API_KEY`/`STEAM_ID` configurés (`GET /api/steam/status`). Aucun formulaire de credentials côté web — la configuration reste exclusivement dans `.env` du serveur.

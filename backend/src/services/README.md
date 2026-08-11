@@ -13,6 +13,7 @@
 - **`llm/`** : couche d'abstraction multi-fournisseurs (Gemini, Claude, OpenAI, Mistral). `llmClient.js` route vers le bon provider selon la préférence stockée en base et lit la clé API depuis les variables d'environnement — jamais depuis la base de données.
 - **`recommendationPrompts.js`** : prompts système et schéma de tool-use pour la génération/raffinement de recommandations, structurés selon la matrice en 3 tiers (Cœur de Cible / Périphérique / Exotique, 4/2/3 jeux).
 - **`markdownExport.js`** : génère l'inventaire complet en Markdown, réutilisé à la fois pour l'export utilisateur (`GET /api/backup/markdown`) et comme payload envoyé au LLM pour les recommandations. Un jeu multi-plateforme (ex: possédé sur PC et sur mobile) apparaît une seule fois, avec un sous-tableau listant chacune de ses instances de possession.
+- **`ownershipFinancials.js`** : normalisation du volet financier des périodes de possession (prix d'achat/vente, interlocuteur et son type, notes libres). Partagé par `consoles.routes.js` et `gamePlatforms.routes.js` pour que les périodes console et les périodes jeu+plateforme se comportent strictement de la même façon. Règles : un prix vide, non numérique ou négatif devient `null` (mais `0` est conservé — un jeu offert n'est pas un prix inconnu) ; une chaîne vide ou composée d'espaces devient `null` ; un type d'interlocuteur hors liste (`personne`, `grande_surface`, `magasin_specialise`, `autre`) devient `null` plutôt que de provoquer une erreur, ces champs étant purement descriptifs.
 - **`steam/`** : synchronisation automatique et périodique de la bibliothèque Steam vers `game_platforms`. `steamClient.js` fait l'appel HTTP pur à l'API Web Steam (credentials lus uniquement depuis `STEAM_API_KEY`/`STEAM_ID`, jamais stockés en base). `steamSync.js` porte la logique de rattachement (matching par `steam_appid` puis par titre) et la règle de conflit `hours = max(actuel, steam)` — `completed` n'est jamais modifié par la sync. `steamScheduler.js` déclenche une sync au démarrage puis toutes les `STEAM_SYNC_INTERVAL_HOURS` heures (`setInterval` natif, pas de dépendance de type cron).
 
 ## Index du Projet
@@ -31,7 +32,8 @@ services/
 │   ├── steamSync.js        # Matching jeu<->plateforme Steam + règle de conflit
 │   └── steamScheduler.js   # Déclenchement au démarrage + périodique (setInterval)
 ├── recommendationPrompts.js
-└── markdownExport.js
+├── markdownExport.js
+└── ownershipFinancials.js  # Normalisation prix/vendeur/notes des périodes de possession
 ```
 
 ## Configuration

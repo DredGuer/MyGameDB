@@ -7,8 +7,13 @@ const db = require('../db/connection');
 const asyncHandler = require('../middleware/asyncHandler');
 const { ApiError } = require('../middleware/errorHandler');
 const hub = require('../ws/hub');
+const { FINANCIAL_FIELDS, extractFinancials, financialValues } = require('../services/ownershipFinancials');
 
 const router = express.Router({ mergeParams: true });
+
+// Colonnes renvoyées pour une période de possession jeu+plateforme (colonnes
+// de base + volet financier) — même principe que côté consoles.routes.js.
+const PERIOD_COLUMNS = ['id', 'date_start', 'date_end', 'acquisition_type', ...FINANCIAL_FIELDS].join(', ');
 
 router.get('/', asyncHandler(async (req, res) => {
     const rows = db.prepare(`
@@ -79,7 +84,7 @@ router.delete('/:platformInstanceId', asyncHandler(async (req, res) => {
 
 router.get('/:platformInstanceId/ownership-periods', asyncHandler(async (req, res) => {
     const periods = db.prepare(
-        'SELECT id, date_start, date_end, acquisition_type FROM game_platform_ownership_periods WHERE game_platform_id = ? ORDER BY date_start ASC'
+        `SELECT ${PERIOD_COLUMNS} FROM game_platform_ownership_periods WHERE game_platform_id = ? ORDER BY date_start ASC`
     ).all(req.params.platformInstanceId);
     res.json({ data: periods });
 }));
@@ -88,12 +93,47 @@ router.post('/:platformInstanceId/ownership-periods', asyncHandler(async (req, r
     const { date_start, date_end, acquisition_type } = req.body;
     if (!date_start) throw new ApiError(400, 'VALIDATION_ERROR', "La date d'acquisition est requise.");
 
-    const info = db.prepare(
-        'INSERT INTO game_platform_ownership_periods (game_platform_id, date_start, date_end, acquisition_type) VALUES (?, ?, ?, ?)'
-    ).run(req.params.platformInstanceId, date_start, date_end || null, acquisition_type || null);
+    const financials = extractFinancials(req.body);
+    const info = db.prepare(`
+        INSERT INTO game_platform_ownership_periods
+            (game_platform_id, date_start, date_end, acquisition_type, ${FINANCIAL_FIELDS.join(', ')})
+        VALUES (?, ?, ?, ?, ${FINANCIAL_FIELDS.map(() => '?').join(', ')})
+    `).run(
+        req.params.platformInstanceId, date_start, date_end || null, acquisition_type || null,
+        ...financialValues(financials)
+    );
 
     hub.broadcast('game:platform-changed', { gameId: Number(req.params.gameId), platformInstanceId: Number(req.params.platformInstanceId) }, req.clientId);
-    res.status(201).json({ data: { id: info.lastInsertRowid, date_start, date_end: date_end || null, acquisition_type: acquisition_type || null } });
+    res.status(201).json({
+        data: db.prepare(`SELECT ${PERIOD_COLUMNS} FROM game_platform_ownership_periods WHERE id = ?`).get(info.lastInsertRowid)
+    });
+}));
+
+// Mise à jour d'une période existante (prix/acheteur de revente renseignés
+// après coup — voir la route équivalente dans consoles.routes.js).
+router.put('/ownership-periods/:periodId', asyncHandler(async (req, res) => {
+    const existing = db.prepare('SELECT * FROM game_platform_ownership_periods WHERE id = ?').get(req.params.periodId);
+    if (!existing) throw new ApiError(404, 'NOT_FOUND', 'Période introuvable.');
+
+    const date_start = req.body.date_start ?? existing.date_start;
+    if (!date_start) throw new ApiError(400, 'VALIDATION_ERROR', "La date d'acquisition est requise.");
+
+    const financials = extractFinancials(req.body);
+    db.prepare(`
+        UPDATE game_platform_ownership_periods
+        SET date_start = ?, date_end = ?, acquisition_type = ?,
+            ${FINANCIAL_FIELDS.map((f) => `${f} = ?`).join(', ')}
+        WHERE id = ?
+    `).run(
+        date_start,
+        req.body.date_end ?? existing.date_end ?? null,
+        req.body.acquisition_type ?? existing.acquisition_type ?? null,
+        ...financialValues(financials),
+        req.params.periodId
+    );
+
+    hub.broadcast('game:platform-changed', { gameId: Number(req.params.gameId), platformInstanceId: existing.game_platform_id }, req.clientId);
+    res.json({ data: db.prepare(`SELECT ${PERIOD_COLUMNS} FROM game_platform_ownership_periods WHERE id = ?`).get(req.params.periodId) });
 }));
 
 router.delete('/ownership-periods/:periodId', asyncHandler(async (req, res) => {

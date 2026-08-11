@@ -39,6 +39,26 @@ Une base encore au format "1 jeu = 1 console" (héritage V1) est migrée automat
 
 Les deux tables de périodes de possession (`console_ownership_periods` et `game_platform_ownership_periods`) portent aussi `acquisition_type` (nullable, valeurs libres côté application : `achat`, `pret`, `location`) — précise comment le jeu ou la console a été obtenu(e) sur cette période. Pas de contrainte `CHECK` en base pour rester tolérant si de nouvelles valeurs sont introduites côté UI sans migration de schéma.
 
+### Volet financier des périodes de possession
+
+Ces deux mêmes tables portent un jeu de colonnes identique, toutes nullables (`NULL` = non renseigné) :
+
+| Colonne | Type | Rôle |
+|---|---|---|
+| `purchase_price` | REAL | Prix d'achat. `0` (obtenu gratuitement) reste distinct de `NULL` (non renseigné) |
+| `purchase_from` | TEXT | Vendeur (nom libre) |
+| `purchase_from_type` | TEXT | `personne` \| `grande_surface` \| `magasin_specialise` \| `autre` |
+| `sale_price` | REAL | Prix de revente |
+| `sale_to` | TEXT | Acheteur (nom libre) |
+| `sale_to_type` | TEXT | Mêmes valeurs que `purchase_from_type` |
+| `purchase_notes` | TEXT | Champ libre (accessoires fournis, état, circonstances de l'achat...) |
+
+**Pourquoi sur les périodes et non sur `consoles` / `game_platforms` ?** Une même console peut être achetée, revendue, puis rachetée : chaque période garde alors son propre prix, son propre vendeur et ses propres notes. Porter ces champs sur la console elle-même écraserait l'historique du premier achat à chaque rachat.
+
+Les montants sont stockés en `REAL` (et non en centimes entiers) : sur une base personnelle, la lisibilité directe des valeurs en SQL prime sur la précision comptable au centime. Ces colonnes sont ajoutées aux bases antérieures par `scripts/init-db.js` (`ALTER TABLE ADD COLUMN` idempotent, comme `model`/`serial_number`/`acquisition_type`).
+
+La normalisation des valeurs entrantes (prix négatif ou non numérique → `NULL`, texte vide → `NULL`, type d'interlocuteur hors liste → `NULL`) est centralisée dans `backend/src/services/ownershipFinancials.js`, partagé par les routes console et jeu+plateforme.
+
 ## Troubleshooting
 
 - **`FOREIGN KEY constraint failed`** : vérifier que l'entité parente (console, jeu, genre) existe bien avant l'insertion — les contraintes FK sont actives (`PRAGMA foreign_keys = ON`).

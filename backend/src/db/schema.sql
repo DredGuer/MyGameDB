@@ -94,16 +94,38 @@ CREATE TABLE IF NOT EXISTS game_genres (
 -- acquisition_type : 'achat' | 'pret' | 'location', optionnel (NULL = non
 -- précisé). Pas de contrainte CHECK pour rester tolérant si de nouvelles
 -- valeurs sont ajoutées côté UI sans migration de schéma.
+--
+-- Volet financier (tout optionnel, NULL = non renseigné) :
+--   purchase_price / sale_price : montants en REAL (et non en centimes
+--     entiers) — on reste sur une base personnelle où la lisibilité directe
+--     de la valeur en SQL prime sur la précision comptable au centime.
+--   purchase_from / sale_to : nom libre du vendeur/acheteur.
+--   purchase_from_type / sale_to_type : 'personne' | 'grande_surface' |
+--     'magasin_specialise' | 'autre' — même tolérance que acquisition_type,
+--     pas de CHECK.
+--   purchase_notes : champ libre pour toute info complémentaire (état de la
+--     boîte, accessoires fournis, circonstances de l'achat...).
 CREATE TABLE IF NOT EXISTS game_platform_ownership_periods (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     game_platform_id INTEGER NOT NULL,
     date_start TEXT,
     date_end TEXT,
     acquisition_type TEXT,
+    purchase_price REAL,
+    purchase_from TEXT,
+    purchase_from_type TEXT,
+    sale_price REAL,
+    sale_to TEXT,
+    sale_to_type TEXT,
+    purchase_notes TEXT,
     FOREIGN KEY (game_platform_id) REFERENCES game_platforms(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gpop_game_platform ON game_platform_ownership_periods(game_platform_id);
 
+-- Mêmes colonnes financières que game_platform_ownership_periods ci-dessus
+-- (voir le commentaire détaillé qui les décrit) : chaque période d'achat/
+-- revente d'une console garde son propre prix, son propre vendeur et ses
+-- propres notes — une console rachetée n'écrase pas l'historique du 1er achat.
 CREATE TABLE IF NOT EXISTS console_ownership_periods (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     console_id INTEGER NOT NULL,
@@ -112,6 +134,13 @@ CREATE TABLE IF NOT EXISTS console_ownership_periods (
     model TEXT,
     serial_number TEXT,
     acquisition_type TEXT,
+    purchase_price REAL,
+    purchase_from TEXT,
+    purchase_from_type TEXT,
+    sale_price REAL,
+    sale_to TEXT,
+    sale_to_type TEXT,
+    purchase_notes TEXT,
     FOREIGN KEY (console_id) REFERENCES consoles(id) ON DELETE CASCADE
 );
 

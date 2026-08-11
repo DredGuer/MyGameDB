@@ -313,12 +313,42 @@ async function openHardwareModal() {
                 if (p.model) detailsParts.push(`📦 ${escapeHtml(p.model)}`);
                 if (p.serial_number) detailsParts.push(`🔢 ${escapeHtml(p.serial_number)}`);
                 const detailsHtml = detailsParts.length ? ` <span class="text-slate-500">· ${detailsParts.join(' · ')}</span>` : '';
-                return `<div class="text-xs text-slate-300">${p.date_start || '?'} → ${p.date_end || 'en cours'}${detailsHtml}</div>`;
+
+                // Volet financier : mêmes helpers que la modale d'édition
+                // (app.js), pour un rendu identique des prix et du bilan.
+                const moneyParts = financialSummaryParts(p);
+                const balance = financialBalanceHtml(p);
+                const moneyHtml = moneyParts.length
+                    ? `<div class="text-[10px] text-slate-400 ml-3">${moneyParts.join(' · ')}${balance ? ` · ${balance}` : ''}</div>`
+                    : '';
+                const notesHtml = p.purchase_notes
+                    ? `<div class="text-[10px] text-slate-500 italic ml-3">📝 ${escapeHtml(p.purchase_notes)}</div>`
+                    : '';
+
+                return `
+                    <div>
+                        <div class="text-xs text-slate-300">${p.date_start || '?'} → ${p.date_end || 'en cours'}${detailsHtml}</div>
+                        ${moneyHtml}
+                        ${notesHtml}
+                    </div>
+                `;
             }).join('');
+
+            // Total dépensé sur cette console, toutes périodes confondues
+            // (les périodes sans prix renseigné sont simplement ignorées).
+            const spent = c.periods.reduce((sum, p) => sum + (Number.isFinite(Number(p.purchase_price)) && p.purchase_price !== null ? Number(p.purchase_price) : 0), 0);
+            const earned = c.periods.reduce((sum, p) => sum + (Number.isFinite(Number(p.sale_price)) && p.sale_price !== null ? Number(p.sale_price) : 0), 0);
+            const totalHtml = spent > 0 || earned > 0
+                ? `<div class="text-[10px] text-slate-500 mt-1 pt-1 border-t border-slate-800">
+                       Total : <span class="text-emerald-400">${formatPrice(spent)}</span> dépensé${earned > 0 ? ` · <span class="text-amber-400">${formatPrice(earned)}</span> récupéré` : ''}
+                   </div>`
+                : '';
+
             return `
                 <div class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
                     <p class="text-sm font-medium text-slate-200 mb-1">🕹️ ${escapeHtml(c.console_name)}</p>
-                    <div class="space-y-0.5">${periodsHtml}</div>
+                    <div class="space-y-1">${periodsHtml}</div>
+                    ${totalHtml}
                 </div>
             `;
         }).join('');
@@ -332,7 +362,7 @@ async function openHardwareModal() {
 
     openModal(`
         <h3 class="text-xl font-bold text-indigo-300 mb-1">🗄️ Mon matériel</h3>
-        <p class="text-xs text-slate-500 mb-4">Toutes tes consoles avec leur historique de possession (modèle, numéro de série).</p>
+        <p class="text-xs text-slate-500 mb-4">Toutes tes consoles avec leur historique de possession (modèle, numéro de série, prix et provenance).</p>
         <div class="space-y-5 max-h-[65vh] overflow-y-auto pr-1">
             ${sectionsHtml || '<p class="text-slate-500 text-sm italic">Aucune console enregistrée pour le moment.</p>'}
         </div>

@@ -23,8 +23,9 @@ Toute requête mutante (POST/PUT/DELETE) peut porter un header `X-Client-Id` (UU
 | POST | `/api/consoles` | `{ name, family_id }` | Création |
 | PUT | `/api/consoles/:id` | `{ name, family_id }` | Modification |
 | DELETE | `/api/consoles/:id` | — | Suppression (cascade jeux) |
-| GET | `/api/consoles/:id/ownership-periods` | — | Périodes de possession (avec `model`, `serial_number`, `acquisition_type`) |
-| POST | `/api/consoles/:id/ownership-periods` | `{ date_start, date_end, model?, serial_number?, acquisition_type? }` | Ajout d'une période — modèle, numéro de série et type d'acquisition (`achat`\|`pret`\|`location`) optionnels |
+| GET | `/api/consoles/:id/ownership-periods` | — | Périodes de possession (avec `model`, `serial_number`, `acquisition_type` et le [volet financier](#volet-financier-des-périodes-de-possession)) |
+| POST | `/api/consoles/:id/ownership-periods` | `{ date_start, date_end?, model?, serial_number?, acquisition_type?, ...financier? }` | Ajout d'une période — modèle, numéro de série et type d'acquisition (`achat`\|`pret`\|`location`) optionnels |
+| PUT | `/api/consoles/ownership-periods/:periodId` | `{ date_start?, date_end?, model?, serial_number?, acquisition_type?, ...financier? }` | Mise à jour d'une période (sert notamment à renseigner le prix de vente après coup) |
 | GET | `/api/consoles/ownership-periods/all` | — | Toutes les consoles avec leurs périodes, groupées par famille (anti N+1, sert la modale "Mon matériel") |
 | DELETE | `/api/consoles/ownership-periods/:periodId` | — | Suppression d'une période |
 
@@ -51,8 +52,27 @@ possession** séparées — voir § Plateformes d'un jeu ci-dessous. C'est ce qu
 | POST | `/api/games/:gameId/platforms` | `{ console_id, hours, completed, platform_type }` | Ajoute une plateforme à un jeu existant (409 si déjà rattaché à cette plateforme) |
 | PUT | `/api/games/:gameId/platforms/:platformInstanceId` | `{ hours, completed, platform_type, date_completed }` | Modifie une instance (heures, statut, support, date de complétion) |
 | DELETE | `/api/games/:gameId/platforms/:platformInstanceId` | — | Retire cette plateforme du jeu (cascade périodes de possession de l'instance) |
-| GET/POST | `/api/games/:gameId/platforms/:platformInstanceId/ownership-periods` | `{ date_start, date_end, acquisition_type? }` | Périodes de possession de cette instance — type d'acquisition (`achat`\|`pret`\|`location`) optionnel |
+| GET/POST | `/api/games/:gameId/platforms/:platformInstanceId/ownership-periods` | `{ date_start, date_end?, acquisition_type?, ...financier? }` | Périodes de possession de cette instance — type d'acquisition (`achat`\|`pret`\|`location`) et [volet financier](#volet-financier-des-périodes-de-possession) optionnels |
+| PUT | `/api/games/:gameId/platforms/ownership-periods/:periodId` | `{ date_start?, date_end?, acquisition_type?, ...financier? }` | Mise à jour d'une période (prix de vente renseigné après coup) |
 | DELETE | `/api/games/:gameId/platforms/ownership-periods/:periodId` | — | Suppression d'une période |
+
+### Volet financier des périodes de possession
+
+Champs communs aux périodes console et aux périodes jeu+plateforme, **tous optionnels** (`null` = non renseigné) :
+
+| Champ | Type | Description |
+|---|---|---|
+| `purchase_price` | number | Prix d'achat. `0` est conservé (= obtenu gratuitement) et reste distinct de `null` (= non renseigné) |
+| `purchase_from` | string | Nom du vendeur (ex: `"Micromania"`, `"Kevin"`) |
+| `purchase_from_type` | string | `personne` \| `grande_surface` \| `magasin_specialise` \| `autre` |
+| `sale_price` | number | Prix de revente |
+| `sale_to` | string | Nom de l'acheteur |
+| `sale_to_type` | string | Mêmes valeurs que `purchase_from_type` |
+| `purchase_notes` | string | Champ libre (état de la boîte, accessoires fournis, circonstances...) |
+
+Normalisation appliquée côté serveur par `backend/src/services/ownershipFinancials.js` : un prix vide, non numérique ou négatif devient `null` ; une chaîne composée uniquement d'espaces devient `null` ; un type d'interlocuteur hors liste devient `null` (jamais d'erreur 400 — ces champs sont purement descriptifs et ne doivent pas bloquer l'enregistrement d'une période).
+
+⚠️ La synchronisation Steam ne renseigne **jamais** ces champs : l'API Web Steam n'expose ni prix d'achat ni vendeur (seuls `playtime_forever`, `appid` et `name` sont disponibles). Elle ne touche pas non plus aux périodes de possession existantes — une saisie manuelle n'est donc jamais écrasée.
 
 ## Genres
 

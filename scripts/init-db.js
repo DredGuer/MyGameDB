@@ -28,8 +28,23 @@ function migrateOwnershipPeriodsColumns(db) {
         });
     };
 
-    addColumnsIfMissing('console_ownership_periods', { model: 'TEXT', serial_number: 'TEXT', acquisition_type: 'TEXT' });
-    addColumnsIfMissing('game_platform_ownership_periods', { acquisition_type: 'TEXT' });
+    // Volet financier commun aux deux tables de périodes (prix d'achat/vente,
+    // interlocuteur et son type, notes libres). Tout est nullable : une période
+    // existante reste valide telle quelle, sans valeur par défaut à inventer.
+    const FINANCIAL_COLUMNS = {
+        purchase_price: 'REAL',
+        purchase_from: 'TEXT',
+        purchase_from_type: 'TEXT',
+        sale_price: 'REAL',
+        sale_to: 'TEXT',
+        sale_to_type: 'TEXT',
+        purchase_notes: 'TEXT'
+    };
+
+    addColumnsIfMissing('console_ownership_periods', {
+        model: 'TEXT', serial_number: 'TEXT', acquisition_type: 'TEXT', ...FINANCIAL_COLUMNS
+    });
+    addColumnsIfMissing('game_platform_ownership_periods', { acquisition_type: 'TEXT', ...FINANCIAL_COLUMNS });
 }
 
 // Pré-remplit familles + consoles UNIQUEMENT si families est vide (nouvelle

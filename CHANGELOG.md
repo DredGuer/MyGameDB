@@ -1,5 +1,19 @@
 # Journal des Mises à Jour
 
+## [3.1.0] - 2026-08-11 — Prix, provenance et notes sur les périodes de possession
+
+### Ajouté
+- **Volet financier optionnel sur chaque période de possession**, pour les consoles comme pour chaque plateforme d'un jeu : **prix d'achat**, **prix de vente**, **interlocuteur** (à qui / chez qui) avec son **type** (particulier, grande surface, magasin spécialisé, autre), et un **champ libre** pour les infos complémentaires (accessoires fournis, état de la boîte, circonstances de l'achat...).
+- Ces champs sont portés par les **périodes** et non par la console/le jeu : une console achetée, revendue puis rachetée conserve le prix, le vendeur et les notes de *chaque* cycle, sans que le rachat n'écrase l'historique du premier achat.
+- **Bilan gain/perte** calculé et affiché quand le prix d'achat *et* le prix de vente d'une période sont renseignés, et **total dépensé / récupéré par console** dans la modale "🗄️ Mon matériel".
+- **Édition d'une période existante** (`PUT` sur les deux familles de périodes) — indispensable pour renseigner le prix de vente au moment de la revente, bien après la création de la période d'achat. L'édition se fait sur place, sans rechargement de la modale.
+- Migration automatique et idempotente des bases existantes (`ALTER TABLE ADD COLUMN` conditionnés par `PRAGMA table_info`) : aucune donnée existante n'est touchée, toutes les nouvelles colonnes sont nullables.
+
+### Notes
+- Un prix à `0` est conservé et affiché `0 €` (jeu offert / gratuit) : c'est volontairement distinct de "non renseigné".
+- La saisie reste tolérante : un prix vide, non numérique ou négatif, comme un type d'interlocuteur inattendu, est simplement ignoré plutôt que de bloquer l'enregistrement de la période.
+- **La synchronisation Steam ne remplit pas ces champs** : l'API Web Steam n'expose ni prix d'achat ni vendeur (uniquement le temps de jeu, l'`appid` et le titre). Pour un jeu importé depuis Steam, "Steam" est seulement *suggéré* en placeholder du vendeur. La sync ne touche jamais aux périodes de possession, donc une saisie manuelle n'est jamais écrasée.
+
 ## [3.0.0] - 2026-08-11 — Multi-plateforme, synchronisation Steam et identité visuelle
 
 ### Ajouté

@@ -294,6 +294,146 @@ function acquisitionTypeOptionsHtml(selected) {
     return blank + opts;
 }
 
+// --- Volet financier des périodes de possession ---
+// Prix d'achat/vente, interlocuteur et son type, notes libres. Les mêmes
+// helpers servent les périodes console et les périodes jeu+plateforme, pour
+// que les deux formulaires restent identiques (mêmes libellés, même
+// normalisation, même rendu du récapitulatif).
+const COUNTERPARTY_TYPE_LABELS = {
+    personne: '🧑 Particulier',
+    grande_surface: '🛒 Grande surface',
+    magasin_specialise: '🎮 Magasin spécialisé',
+    autre: '📦 Autre'
+};
+
+function counterpartyTypeOptionsHtml(selected) {
+    const blank = `<option value="" ${!selected ? 'selected' : ''}>— Non précisé —</option>`;
+    const opts = Object.entries(COUNTERPARTY_TYPE_LABELS)
+        .map(([val, label]) => `<option value="${val}" ${selected === val ? 'selected' : ''}>${label}</option>`)
+        .join('');
+    return blank + opts;
+}
+
+// Formate un montant pour l'affichage. 0 est volontairement affiché ("0 €" =
+// obtenu gratuitement) et distinct de null/undefined (non renseigné).
+function formatPrice(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return `${n.toFixed(2).replace(/\.00$/, '').replace('.', ',')} €`;
+}
+
+// Résumé lisible d'une période : "💳 499 € ← Micromania (magasin spé.)" +
+// "💰 380 € → Kevin". Renvoie [] si rien n'est renseigné, pour que l'appelant
+// n'affiche aucune ligne parasite.
+function financialSummaryParts(p) {
+    const parts = [];
+    const bought = formatPrice(p.purchase_price);
+    if (bought || p.purchase_from) {
+        const who = p.purchase_from ? ` ← ${escapeHtml(p.purchase_from)}` : '';
+        const type = p.purchase_from_type && COUNTERPARTY_TYPE_LABELS[p.purchase_from_type]
+            ? ` <span class="opacity-70">(${COUNTERPARTY_TYPE_LABELS[p.purchase_from_type]})</span>` : '';
+        parts.push(`<span class="text-emerald-400">💳 ${bought || '?'}</span>${who}${type}`);
+    }
+    const sold = formatPrice(p.sale_price);
+    if (sold || p.sale_to) {
+        const who = p.sale_to ? ` → ${escapeHtml(p.sale_to)}` : '';
+        const type = p.sale_to_type && COUNTERPARTY_TYPE_LABELS[p.sale_to_type]
+            ? ` <span class="opacity-70">(${COUNTERPARTY_TYPE_LABELS[p.sale_to_type]})</span>` : '';
+        parts.push(`<span class="text-amber-400">💰 ${sold || '?'}</span>${who}${type}`);
+    }
+    return parts;
+}
+
+// Bilan (gain/perte) d'une période revendue, affiché uniquement quand les deux
+// montants sont connus — sinon la soustraction n'aurait aucun sens.
+function financialBalanceHtml(p) {
+    const buy = Number(p.purchase_price);
+    const sell = Number(p.sale_price);
+    if (!Number.isFinite(buy) || !Number.isFinite(sell)) return '';
+    if (p.purchase_price === null || p.sale_price === null) return '';
+    const diff = sell - buy;
+    const sign = diff >= 0 ? '+' : '−';
+    const color = diff >= 0 ? 'text-emerald-400' : 'text-rose-400';
+    return `<span class="${color}" title="Bilan achat/revente">${sign}${formatPrice(Math.abs(diff))}</span>`;
+}
+
+// Champs de saisie du volet financier, repliés dans un <details> pour ne pas
+// alourdir le formulaire quand on veut juste enregistrer des dates.
+// `prefix` distingue les identifiants entre les différents formulaires ouverts
+// simultanément (une période console vs une période par plateforme de jeu).
+// `values` pré-remplit le formulaire en mode édition.
+function financialFieldsHtml(prefix, values = {}, opts = {}) {
+    const v = (k) => (values[k] === null || values[k] === undefined ? '' : values[k]);
+    const suggestedFrom = opts.suggestedFrom || '';
+    return `
+        <details class="bg-slate-900/60 border border-slate-700 rounded px-2 py-1.5" ${opts.open ? 'open' : ''}>
+            <summary class="text-[10px] text-slate-400 cursor-pointer select-none">💶 Prix & provenance (optionnel)</summary>
+            <div class="mt-2 space-y-1.5">
+                <div class="grid grid-cols-3 gap-1.5">
+                    <div>
+                        <label class="text-[10px] text-slate-500">Prix d'achat</label>
+                        <input type="number" step="0.01" min="0" id="${prefix}-purchase-price" value="${v('purchase_price')}"
+                            placeholder="€" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px] font-mono">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-500">Acheté à / chez</label>
+                        <input type="text" id="${prefix}-purchase-from" value="${escapeHtml(String(v('purchase_from')))}"
+                            placeholder="${escapeHtml(suggestedFrom || 'ex: Micromania')}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-500">Type de vendeur</label>
+                        <select id="${prefix}-purchase-from-type" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]">
+                            ${counterpartyTypeOptionsHtml(v('purchase_from_type') || null)}
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-1.5">
+                    <div>
+                        <label class="text-[10px] text-slate-500">Prix de vente</label>
+                        <input type="number" step="0.01" min="0" id="${prefix}-sale-price" value="${v('sale_price')}"
+                            placeholder="€" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px] font-mono">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-500">Vendu à</label>
+                        <input type="text" id="${prefix}-sale-to" value="${escapeHtml(String(v('sale_to')))}"
+                            placeholder="ex: Kevin" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-500">Type d'acheteur</label>
+                        <select id="${prefix}-sale-to-type" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]">
+                            ${counterpartyTypeOptionsHtml(v('sale_to_type') || null)}
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] text-slate-500">Infos complémentaires</label>
+                    <textarea id="${prefix}-purchase-notes" rows="2" placeholder="ex: boîte abîmée, 2 manettes fournies, cadeau d'anniversaire..."
+                        class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]">${escapeHtml(String(v('purchase_notes')))}</textarea>
+                </div>
+            </div>
+        </details>
+    `;
+}
+
+// Lit les champs financiers d'un formulaire. Un champ absent du DOM renvoie
+// null plutôt que de faire planter la lecture (formulaire partiellement rendu).
+function readFinancialFields(prefix) {
+    const val = (suffix) => {
+        const el = document.getElementById(`${prefix}-${suffix}`);
+        return el ? el.value.trim() : '';
+    };
+    return {
+        purchase_price: val('purchase-price') === '' ? null : Number(val('purchase-price')),
+        purchase_from: val('purchase-from') || null,
+        purchase_from_type: val('purchase-from-type') || null,
+        sale_price: val('sale-price') === '' ? null : Number(val('sale-price')),
+        sale_to: val('sale-to') || null,
+        sale_to_type: val('sale-to-type') || null,
+        purchase_notes: val('purchase-notes') || null
+    };
+}
+
 async function editConsole(id) {
     const c = consolesCache[id];
     if (!c) return;
@@ -309,13 +449,44 @@ async function editConsole(id) {
         const detailsHtml = detailsParts.length
             ? `<div class="text-slate-500 text-[10px] mt-0.5">${detailsParts.join(' · ')}</div>`
             : '';
+
+        const moneyParts = financialSummaryParts(p);
+        const balance = financialBalanceHtml(p);
+        const moneyHtml = moneyParts.length
+            ? `<div class="text-[10px] mt-0.5 text-slate-400">${moneyParts.join(' · ')}${balance ? ` · ${balance}` : ''}</div>`
+            : '';
+        const notesHtml = p.purchase_notes
+            ? `<div class="text-[10px] mt-0.5 text-slate-500 italic">📝 ${escapeHtml(p.purchase_notes)}</div>`
+            : '';
+
         return `
-        <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs">
-            <div>
-                <span class="text-slate-300">${p.date_start || '?'} → ${p.date_end || 'en cours'}</span>
-                ${detailsHtml}
+        <div class="bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs">
+            <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                    <span class="text-slate-300">${p.date_start || '?'} → ${p.date_end || 'en cours'}</span>
+                    ${detailsHtml}
+                    ${moneyHtml}
+                    ${notesHtml}
+                </div>
+                <div class="flex gap-1.5 shrink-0">
+                    <button onclick="toggleConsolePeriodEdit(${p.id})" class="text-indigo-400 hover:text-indigo-300" title="Modifier prix / provenance">✏️</button>
+                    <button onclick="deleteConsoleOwnershipPeriod(${p.id}, ${id})" class="text-rose-400 hover:text-rose-300" title="Supprimer">🗑️</button>
+                </div>
             </div>
-            <button onclick="deleteConsoleOwnershipPeriod(${p.id}, ${id})" class="text-rose-400 hover:text-rose-300">🗑️</button>
+            <div id="edit-console-period-${p.id}" class="hidden mt-2 space-y-1.5 border-t border-slate-700 pt-2">
+                <div class="grid grid-cols-2 gap-1.5">
+                    <div>
+                        <label class="text-[10px] text-slate-500">Acquise le</label>
+                        <input type="date" id="edit-console-period-${p.id}-start" value="${p.date_start || ''}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-500">Cédée le</label>
+                        <input type="date" id="edit-console-period-${p.id}-end" value="${p.date_end || ''}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]">
+                    </div>
+                </div>
+                ${financialFieldsHtml(`edit-console-period-${p.id}`, p, { open: true })}
+                <button onclick="saveConsoleOwnershipPeriod(${p.id}, ${id})" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-1 rounded text-[10px]">💾 Enregistrer cette période</button>
+            </div>
         </div>
     `;
     }).join('');
@@ -356,7 +527,10 @@ async function editConsole(id) {
                     <label class="text-[10px] text-slate-500">Numéro de série (optionnel)</label>
                     <input type="text" id="new-period-console-serial" placeholder="ex: SN-123456" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs font-mono">
                 </div>
-                <button onclick="addConsoleOwnershipPeriod(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs whitespace-nowrap">+ Ajouter</button>
+            </div>
+            <div class="mb-2">${financialFieldsHtml('new-period-console')}</div>
+            <div class="flex justify-end">
+                <button onclick="addConsoleOwnershipPeriod(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs whitespace-nowrap">+ Ajouter la période</button>
             </div>
         </div>
 
@@ -377,12 +551,30 @@ async function addConsoleOwnershipPeriod(consoleId) {
     const acquisitionType = document.getElementById('new-period-console-acquisition').value || null;
     if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
     await api.addConsoleOwnershipPeriod(consoleId, {
-        date_start: start, date_end: end, model, serial_number: serial, acquisition_type: acquisitionType
+        date_start: start, date_end: end, model, serial_number: serial, acquisition_type: acquisitionType,
+        ...readFinancialFields('new-period-console')
     });
     // render() doit être attendu avant de rouvrir la modale : sinon la
     // reconstruction du DOM en arrière-plan peut interférer avec l'appel
     // à openModal() fait par editConsole() (même défaut déjà corrigé pour
     // addGamePlatformInline).
+    await render();
+    editConsole(consoleId);
+}
+// Déplie le formulaire d'édition d'une période sans recharger la modale :
+// éditer un prix ne doit pas faire perdre la position de lecture.
+function toggleConsolePeriodEdit(periodId) {
+    const el = document.getElementById(`edit-console-period-${periodId}`);
+    if (el) el.classList.toggle('hidden');
+}
+async function saveConsoleOwnershipPeriod(periodId, consoleId) {
+    const start = document.getElementById(`edit-console-period-${periodId}-start`).value;
+    if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
+    await api.updateConsoleOwnershipPeriod(periodId, {
+        date_start: start,
+        date_end: document.getElementById(`edit-console-period-${periodId}-end`).value || null,
+        ...readFinancialFields(`edit-console-period-${periodId}`)
+    });
     await render();
     editConsole(consoleId);
 }
@@ -476,11 +668,17 @@ async function addNewGenreInline(gameId) {
 // `id` ici est un game_platform_id (identifie l'instance cliquée dans le
 // tableau) : on en tire le gameId réel pour la fiche jeu et les sous-ressources
 // (genres, screenshots, jaquettes), et platformInstanceId pour les heures/statut.
+// Instance de plateforme dont la modale d'édition est actuellement ouverte —
+// permet aux actions imbriquées (enregistrement d'une période de possession)
+// de rouvrir la bonne modale après un render().
+let currentlyEditedPlatformInstanceId = null;
+
 async function editGame(platformInstanceId) {
     const cached = gamesCache[platformInstanceId];
     if (!cached) return;
     const gameId = cached.gameId;
     const g = cached;
+    currentlyEditedPlatformInstanceId = platformInstanceId;
 
     const screenshots = await api.getScreenshots(gameId);
     const allGenres = await api.getGenres();
@@ -505,13 +703,42 @@ async function editGame(platformInstanceId) {
 
     const platformsHtml = platforms.map(p => {
         const periods = periodsByInstance[p.id] || [];
+        // Un jeu importé par la synchronisation Steam a forcément été acquis
+        // sur Steam : on pré-suggère le vendeur (placeholder seulement, jamais
+        // de valeur imposée — l'API Steam ne fournit aucun prix d'achat).
+        const suggestedFrom = p.source === 'steam-sync' ? 'Steam' : '';
         const periodsHtml = periods.map(period => {
             const acqLabel = period.acquisition_type && ACQUISITION_TYPE_LABELS[period.acquisition_type]
                 ? ` · ${ACQUISITION_TYPE_LABELS[period.acquisition_type]}` : '';
+            const moneyParts = financialSummaryParts(period);
+            const balance = financialBalanceHtml(period);
+            const moneyHtml = moneyParts.length
+                ? `<div class="mt-0.5 text-slate-400">${moneyParts.join(' · ')}${balance ? ` · ${balance}` : ''}</div>`
+                : '';
+            const notesHtml = period.purchase_notes
+                ? `<div class="mt-0.5 text-slate-500 italic">📝 ${escapeHtml(period.purchase_notes)}</div>`
+                : '';
             return `
-                <div class="flex items-center justify-between bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]">
-                    <span class="text-slate-300">${period.date_start || '?'} → ${period.date_end || 'en cours'}${acqLabel}</span>
-                    <button onclick="deleteGamePlatformOwnershipPeriod(${gameId}, ${period.id}, ${p.id})" class="text-rose-400 hover:text-rose-300">🗑️</button>
+                <div class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                            <span class="text-slate-300">${period.date_start || '?'} → ${period.date_end || 'en cours'}${acqLabel}</span>
+                            ${moneyHtml}
+                            ${notesHtml}
+                        </div>
+                        <div class="flex gap-1.5 shrink-0">
+                            <button onclick="toggleGamePeriodEdit(${period.id})" class="text-indigo-400 hover:text-indigo-300" title="Modifier prix / provenance">✏️</button>
+                            <button onclick="deleteGamePlatformOwnershipPeriod(${gameId}, ${period.id}, ${p.id})" class="text-rose-400 hover:text-rose-300" title="Supprimer">🗑️</button>
+                        </div>
+                    </div>
+                    <div id="edit-game-period-${period.id}" class="hidden mt-1.5 space-y-1.5 border-t border-slate-700 pt-1.5">
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <input type="date" id="edit-game-period-${period.id}-start" value="${period.date_start || ''}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]" title="Acquis le">
+                            <input type="date" id="edit-game-period-${period.id}-end" value="${period.date_end || ''}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]" title="Cédé le">
+                        </div>
+                        ${financialFieldsHtml(`edit-game-period-${period.id}`, period, { open: true, suggestedFrom })}
+                        <button onclick="saveGamePlatformOwnershipPeriod(${gameId}, ${period.id})" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-1 rounded text-[10px]">💾 Enregistrer cette période</button>
+                    </div>
                 </div>
             `;
         }).join('');
@@ -550,12 +777,11 @@ async function editGame(platformInstanceId) {
                     <input type="date" id="new-period-platform-start-${p.id}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]" title="Acquis le">
                     <input type="date" id="new-period-platform-end-${p.id}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]" title="Cédé le (optionnel)">
                 </div>
-                <div class="flex gap-1.5">
-                    <select id="new-period-platform-acquisition-${p.id}" class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]">
-                        ${acquisitionTypeOptionsHtml(null)}
-                    </select>
-                    <button onclick="addGamePlatformOwnershipPeriodInline(${gameId}, ${p.id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded text-[10px] whitespace-nowrap">+ Ajouter</button>
-                </div>
+                <select id="new-period-platform-acquisition-${p.id}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]">
+                    ${acquisitionTypeOptionsHtml(null)}
+                </select>
+                ${financialFieldsHtml(`new-period-platform-${p.id}`, {}, { suggestedFrom })}
+                <button onclick="addGamePlatformOwnershipPeriodInline(${gameId}, ${p.id})" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded text-[10px]">+ Ajouter la période</button>
             </div>
         </div>
     `;
@@ -718,10 +944,32 @@ async function addGamePlatformOwnershipPeriodInline(gameId, platformInstanceId) 
     const acquisitionType = document.getElementById(`new-period-platform-acquisition-${platformInstanceId}`).value || null;
     if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
     await api.addGamePlatformOwnershipPeriod(gameId, platformInstanceId, {
-        date_start: start, date_end: end, acquisition_type: acquisitionType
+        date_start: start, date_end: end, acquisition_type: acquisitionType,
+        ...readFinancialFields(`new-period-platform-${platformInstanceId}`)
     });
     await render();
     editGame(platformInstanceId);
+}
+// Même principe que toggleConsolePeriodEdit : on déplie le formulaire sur
+// place, sans reconstruire la modale.
+function toggleGamePeriodEdit(periodId) {
+    const el = document.getElementById(`edit-game-period-${periodId}`);
+    if (el) el.classList.toggle('hidden');
+}
+// La modale d'édition d'un jeu est indexée par instance de plateforme
+// (editGame reçoit un platformInstanceId) : on récupère celle actuellement
+// ouverte pour pouvoir la rouvrir après enregistrement.
+async function saveGamePlatformOwnershipPeriod(gameId, periodId) {
+    const start = document.getElementById(`edit-game-period-${periodId}-start`).value;
+    if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
+    await api.updateGamePlatformOwnershipPeriod(gameId, periodId, {
+        date_start: start,
+        date_end: document.getElementById(`edit-game-period-${periodId}-end`).value || null,
+        ...readFinancialFields(`edit-game-period-${periodId}`)
+    });
+    const reopenId = currentlyEditedPlatformInstanceId;
+    await render();
+    if (reopenId) editGame(reopenId);
 }
 async function deleteGamePlatformOwnershipPeriod(gameId, periodId, platformInstanceId) {
     await api.deleteGamePlatformOwnershipPeriod(gameId, periodId);
