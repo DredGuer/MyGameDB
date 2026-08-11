@@ -105,6 +105,8 @@ CREATE TABLE IF NOT EXISTS console_ownership_periods (
     console_id INTEGER NOT NULL,
     date_start TEXT,
     date_end TEXT,
+    model TEXT,
+    serial_number TEXT,
     FOREIGN KEY (console_id) REFERENCES consoles(id) ON DELETE CASCADE
 );
 

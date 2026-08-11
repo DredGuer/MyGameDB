@@ -290,12 +290,23 @@ async function editConsole(id) {
     const optionsHtml = families.map(f => `<option value="${f.id}" ${f.id === c.familyId ? 'selected' : ''}>${escapeHtml(f.name)}</option>`).join('');
 
     const periods = await api.getConsoleOwnershipPeriods(id);
-    const periodsHtml = periods.map(p => `
+    const periodsHtml = periods.map(p => {
+        const detailsParts = [];
+        if (p.model) detailsParts.push(`📦 ${escapeHtml(p.model)}`);
+        if (p.serial_number) detailsParts.push(`🔢 ${escapeHtml(p.serial_number)}`);
+        const detailsHtml = detailsParts.length
+            ? `<div class="text-slate-500 text-[10px] mt-0.5">${detailsParts.join(' · ')}</div>`
+            : '';
+        return `
         <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs">
-            <span class="text-slate-300">${p.date_start || '?'} → ${p.date_end || 'en cours'}</span>
+            <div>
+                <span class="text-slate-300">${p.date_start || '?'} → ${p.date_end || 'en cours'}</span>
+                ${detailsHtml}
+            </div>
             <button onclick="deleteConsoleOwnershipPeriod(${p.id}, ${id})" class="text-rose-400 hover:text-rose-300">🗑️</button>
         </div>
-    `).join('');
+    `;
+    }).join('');
 
     openModal(`
         <h3 class="text-xl font-bold text-indigo-300 mb-4">Modifier la console</h3>
@@ -308,7 +319,7 @@ async function editConsole(id) {
             <label class="text-xs text-slate-400 block mb-2">📅 Dates de possession de la console</label>
             <p class="text-[10px] text-slate-500 mb-2">Plusieurs périodes possibles si tu as revendu/racheté la machine.</p>
             <div class="space-y-1 mb-2">${periodsHtml || '<p class="text-slate-500 text-xs italic">Aucune période enregistrée.</p>'}</div>
-            <div class="flex gap-2 items-end">
+            <div class="flex gap-2 items-end mb-2">
                 <div class="flex-1">
                     <label class="text-[10px] text-slate-500">Acquise le</label>
                     <input type="date" id="new-period-console-start" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
@@ -316,6 +327,16 @@ async function editConsole(id) {
                 <div class="flex-1">
                     <label class="text-[10px] text-slate-500">Cédée le (optionnel)</label>
                     <input type="date" id="new-period-console-end" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
+                </div>
+            </div>
+            <div class="flex gap-2 items-end">
+                <div class="flex-1">
+                    <label class="text-[10px] text-slate-500">Modèle (optionnel)</label>
+                    <input type="text" id="new-period-console-model" placeholder="ex: PS5 Slim" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
+                </div>
+                <div class="flex-1">
+                    <label class="text-[10px] text-slate-500">Numéro de série (optionnel)</label>
+                    <input type="text" id="new-period-console-serial" placeholder="ex: SN-123456" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs font-mono">
                 </div>
                 <button onclick="addConsoleOwnershipPeriod(${id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs whitespace-nowrap">+ Ajouter</button>
             </div>
@@ -333,8 +354,10 @@ async function editConsole(id) {
 async function addConsoleOwnershipPeriod(consoleId) {
     const start = document.getElementById('new-period-console-start').value;
     const end = document.getElementById('new-period-console-end').value || null;
+    const model = document.getElementById('new-period-console-model').value.trim() || null;
+    const serial = document.getElementById('new-period-console-serial').value.trim() || null;
     if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
-    await api.addConsoleOwnershipPeriod(consoleId, start, end);
+    await api.addConsoleOwnershipPeriod(consoleId, start, end, model, serial);
     render();
     editConsole(consoleId);
 }

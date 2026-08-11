@@ -68,7 +68,7 @@ const api = {
     updateConsole: (id, name, familyId) => apiFetch('PUT', `/api/consoles/${id}`, { name, family_id: familyId }),
     deleteConsole: (id) => apiFetch('DELETE', `/api/consoles/${id}`),
     getConsoleOwnershipPeriods: (id) => apiFetch('GET', `/api/consoles/${id}/ownership-periods`),
-    addConsoleOwnershipPeriod: (id, dateStart, dateEnd) => apiFetch('POST', `/api/consoles/${id}/ownership-periods`, { date_start: dateStart, date_end: dateEnd }),
+    addConsoleOwnershipPeriod: (id, dateStart, dateEnd, model, serialNumber) => apiFetch('POST', `/api/consoles/${id}/ownership-periods`, { date_start: dateStart, date_end: dateEnd, model, serial_number: serialNumber }),
     deleteConsoleOwnershipPeriod: (periodId) => apiFetch('DELETE', `/api/consoles/ownership-periods/${periodId}`),
 
     // Jeux (fiche : titre, rating, notes, jaquette — voir Plateformes pour heures/statut)

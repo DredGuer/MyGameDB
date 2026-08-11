@@ -49,21 +49,26 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
 router.get('/:id/ownership-periods', asyncHandler(async (req, res) => {
     const periods = db.prepare(
-        'SELECT id, date_start, date_end FROM console_ownership_periods WHERE console_id = ? ORDER BY date_start ASC'
+        'SELECT id, date_start, date_end, model, serial_number FROM console_ownership_periods WHERE console_id = ? ORDER BY date_start ASC'
     ).all(req.params.id);
     res.json({ data: periods });
 }));
 
 router.post('/:id/ownership-periods', asyncHandler(async (req, res) => {
-    const { date_start, date_end } = req.body;
+    const { date_start, date_end, model, serial_number } = req.body;
     if (!date_start) throw new ApiError(400, 'VALIDATION_ERROR', "La date d'acquisition est requise.");
 
     const info = db.prepare(
-        'INSERT INTO console_ownership_periods (console_id, date_start, date_end) VALUES (?, ?, ?)'
-    ).run(req.params.id, date_start, date_end || null);
+        'INSERT INTO console_ownership_periods (console_id, date_start, date_end, model, serial_number) VALUES (?, ?, ?, ?, ?)'
+    ).run(req.params.id, date_start, date_end || null, (model || '').trim() || null, (serial_number || '').trim() || null);
 
     hub.broadcast('console:updated', { id: Number(req.params.id) }, req.clientId);
-    res.status(201).json({ data: { id: info.lastInsertRowid, date_start, date_end: date_end || null } });
+    res.status(201).json({
+        data: {
+            id: info.lastInsertRowid, date_start, date_end: date_end || null,
+            model: (model || '').trim() || null, serial_number: (serial_number || '').trim() || null
+        }
+    });
 }));
 
 router.delete('/ownership-periods/:periodId', asyncHandler(async (req, res) => {

@@ -23,8 +23,8 @@ Toute requête mutante (POST/PUT/DELETE) peut porter un header `X-Client-Id` (UU
 | POST | `/api/consoles` | `{ name, family_id }` | Création |
 | PUT | `/api/consoles/:id` | `{ name, family_id }` | Modification |
 | DELETE | `/api/consoles/:id` | — | Suppression (cascade jeux) |
-| GET | `/api/consoles/:id/ownership-periods` | — | Périodes de possession |
-| POST | `/api/consoles/:id/ownership-periods` | `{ date_start, date_end }` | Ajout d'une période |
+| GET | `/api/consoles/:id/ownership-periods` | — | Périodes de possession (avec `model`, `serial_number`) |
+| POST | `/api/consoles/:id/ownership-periods` | `{ date_start, date_end, model?, serial_number? }` | Ajout d'une période — modèle et numéro de série optionnels, utiles si la même console a été rachetée dans une variante différente |
 | DELETE | `/api/consoles/ownership-periods/:periodId` | — | Suppression d'une période |
 
 ## Jeux

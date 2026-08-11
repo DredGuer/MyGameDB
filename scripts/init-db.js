@@ -14,6 +14,20 @@ const Database = require('better-sqlite3');
 const { needsMigration, runMigration } = require('./migrate-to-multi-platform');
 const { DEFAULT_CATALOG } = require('./default-catalog');
 
+// Ajoute les colonnes model/serial_number à console_ownership_periods si la
+// table existait déjà sans elles (base créée avant leur introduction).
+// CREATE TABLE IF NOT EXISTS ne modifie jamais une table existante, d'où ce
+// ALTER TABLE explicite et idempotent (vérifie PRAGMA table_info avant).
+function migrateConsoleOwnershipPeriodsColumns(db) {
+    const columns = db.prepare("PRAGMA table_info(console_ownership_periods)").all().map(c => c.name);
+    if (!columns.includes('model')) {
+        db.exec('ALTER TABLE console_ownership_periods ADD COLUMN model TEXT');
+    }
+    if (!columns.includes('serial_number')) {
+        db.exec('ALTER TABLE console_ownership_periods ADD COLUMN serial_number TEXT');
+    }
+}
+
 // Pré-remplit familles + consoles UNIQUEMENT si families est vide (nouvelle
 // base) — jamais sur une base ayant déjà ses propres noms (ex: "Playstation 1"
 // au lieu de "PlayStation"), pour ne jamais créer de doublon conceptuel.
@@ -47,6 +61,8 @@ function initDb(dbPath) {
     const schemaPath = path.join(__dirname, '../backend/src/db/schema.sql');
     const schema = fs.readFileSync(schemaPath, 'utf-8');
     db.exec(schema);
+
+    migrateConsoleOwnershipPeriodsColumns(db);
 
     if (seedDefaultCatalog(db)) {
         console.log('Catalogue standard de familles/consoles pré-rempli (base vide détectée).');

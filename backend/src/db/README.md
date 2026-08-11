@@ -35,6 +35,8 @@ Une base encore au format "1 jeu = 1 console" (héritage V1) est migrée automat
 
 **Catalogue standard de familles/consoles** : sur une base tout juste créée (table `families` vide), `scripts/init-db.js` pré-remplit automatiquement un catalogue de référence (Sony, Nintendo, Microsoft, SEGA, Atari, PC, Mobile, Web... avec leurs consoles respectives — voir `scripts/default-catalog.js`). Une base ayant déjà ses propres familles/consoles, même partiellement ou avec une formulation différente (ex: "Playstation 1" au lieu de "PlayStation"), n'est jamais modifiée par ce catalogue — aucun risque de doublon sur une installation existante.
 
+`console_ownership_periods` porte aussi `model` et `serial_number` (nullable, optionnels) — utiles quand la même console a été revendue puis rachetée dans une variante différente (ex: PS5 standard puis PS5 Slim). Ajoutés par `scripts/init-db.js` via `ALTER TABLE ADD COLUMN` idempotent sur les bases créées avant leur introduction.
+
 ## Troubleshooting
 
 - **`FOREIGN KEY constraint failed`** : vérifier que l'entité parente (console, jeu, genre) existe bien avant l'insertion — les contraintes FK sont actives (`PRAGMA foreign_keys = ON`).
