@@ -34,7 +34,8 @@ Voir [CHANGELOG.md](CHANGELOG.md) pour le détail complet.
 - **Un jeu peut être possédé sur plusieurs plateformes** (ex: un jeu à la fois sur PC et sur mobile) : chaque plateforme a ses propres heures jouées et statut, la fiche jeu (titre, note, notes, jaquette) reste unique et partagée.
 - Suivi des heures jouées, du statut (en cours / terminé), de la note, des styles/genres (tags combinables).
 - Jaquettes et screenshots par jeu (stockés en fichiers, pas en base64).
-- Dates de possession (par jeu+plateforme, et par console), avec analyse "styles de jeu par tranche d'âge" si tu renseignes ta date de naissance.
+- Dates de possession (par jeu+plateforme, et par console) avec **type d'acquisition** (achat, prêt, location), et pour les consoles : modèle et numéro de série par période — utile pour distinguer une console rachetée dans une variante différente. Analyse "styles de jeu par tranche d'âge" si tu renseignes ta date de naissance.
+- **Vue "Mon matériel"** : toutes tes consoles groupées par famille avec leur historique complet de possession en un seul endroit.
 - **Synchronisation automatique de ta bibliothèque Steam** (optionnelle) : import et mise à jour périodique des jeux possédés et du temps de jeu, sans jamais écraser une correction manuelle (les heures ne peuvent qu'augmenter).
 - Export de l'inventaire en Markdown (`.md`) ou de la base complète en `.sqlite`, import d'une sauvegarde `.sqlite`.
 - **Recommandations IA** (Gemini, Claude, ChatGPT ou Mistral au choix) : 9 jeux personnalisés répartis en 3 tiers — 🔥 Cœur de Cible (valeurs sûres), 🌤️ Périphérique (qui testent tes limites), 🌀 Exotique Hors Cadre (rupture assumée) — avec boucle de feedback et affinement itératif.

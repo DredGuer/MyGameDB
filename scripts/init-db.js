@@ -14,18 +14,22 @@ const Database = require('better-sqlite3');
 const { needsMigration, runMigration } = require('./migrate-to-multi-platform');
 const { DEFAULT_CATALOG } = require('./default-catalog');
 
-// Ajoute les colonnes model/serial_number à console_ownership_periods si la
-// table existait déjà sans elles (base créée avant leur introduction).
-// CREATE TABLE IF NOT EXISTS ne modifie jamais une table existante, d'où ce
-// ALTER TABLE explicite et idempotent (vérifie PRAGMA table_info avant).
-function migrateConsoleOwnershipPeriodsColumns(db) {
-    const columns = db.prepare("PRAGMA table_info(console_ownership_periods)").all().map(c => c.name);
-    if (!columns.includes('model')) {
-        db.exec('ALTER TABLE console_ownership_periods ADD COLUMN model TEXT');
-    }
-    if (!columns.includes('serial_number')) {
-        db.exec('ALTER TABLE console_ownership_periods ADD COLUMN serial_number TEXT');
-    }
+// Ajoute les colonnes manquantes aux tables de périodes de possession si
+// elles existaient déjà sans elles (base créée avant leur introduction).
+// CREATE TABLE IF NOT EXISTS ne modifie jamais une table existante, d'où ces
+// ALTER TABLE explicites et idempotents (vérifie PRAGMA table_info avant).
+function migrateOwnershipPeriodsColumns(db) {
+    const addColumnsIfMissing = (table, columnDefs) => {
+        const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+        Object.entries(columnDefs).forEach(([name, type]) => {
+            if (!existing.includes(name)) {
+                db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+            }
+        });
+    };
+
+    addColumnsIfMissing('console_ownership_periods', { model: 'TEXT', serial_number: 'TEXT', acquisition_type: 'TEXT' });
+    addColumnsIfMissing('game_platform_ownership_periods', { acquisition_type: 'TEXT' });
 }
 
 // Pré-remplit familles + consoles UNIQUEMENT si families est vide (nouvelle
@@ -62,7 +66,7 @@ function initDb(dbPath) {
     const schema = fs.readFileSync(schemaPath, 'utf-8');
     db.exec(schema);
 
-    migrateConsoleOwnershipPeriodsColumns(db);
+    migrateOwnershipPeriodsColumns(db);
 
     if (seedDefaultCatalog(db)) {
         console.log('Catalogue standard de familles/consoles pré-rempli (base vide détectée).');

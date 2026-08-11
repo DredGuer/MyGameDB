@@ -69,7 +69,7 @@ const api = {
     deleteConsole: (id) => apiFetch('DELETE', `/api/consoles/${id}`),
     getConsoleOwnershipPeriods: (id) => apiFetch('GET', `/api/consoles/${id}/ownership-periods`),
     getAllConsoleOwnershipPeriods: () => apiFetch('GET', '/api/consoles/ownership-periods/all'),
-    addConsoleOwnershipPeriod: (id, dateStart, dateEnd, model, serialNumber) => apiFetch('POST', `/api/consoles/${id}/ownership-periods`, { date_start: dateStart, date_end: dateEnd, model, serial_number: serialNumber }),
+    addConsoleOwnershipPeriod: (id, data) => apiFetch('POST', `/api/consoles/${id}/ownership-periods`, data),
     deleteConsoleOwnershipPeriod: (periodId) => apiFetch('DELETE', `/api/consoles/ownership-periods/${periodId}`),
 
     // Jeux (fiche : titre, rating, notes, jaquette — voir Plateformes pour heures/statut)
@@ -89,7 +89,7 @@ const api = {
     updateGamePlatform: (gameId, platformInstanceId, data) => apiFetch('PUT', `/api/games/${gameId}/platforms/${platformInstanceId}`, data),
     removeGamePlatform: (gameId, platformInstanceId) => apiFetch('DELETE', `/api/games/${gameId}/platforms/${platformInstanceId}`),
     getGamePlatformOwnershipPeriods: (gameId, platformInstanceId) => apiFetch('GET', `/api/games/${gameId}/platforms/${platformInstanceId}/ownership-periods`),
-    addGamePlatformOwnershipPeriod: (gameId, platformInstanceId, dateStart, dateEnd) => apiFetch('POST', `/api/games/${gameId}/platforms/${platformInstanceId}/ownership-periods`, { date_start: dateStart, date_end: dateEnd }),
+    addGamePlatformOwnershipPeriod: (gameId, platformInstanceId, data) => apiFetch('POST', `/api/games/${gameId}/platforms/${platformInstanceId}/ownership-periods`, data),
     deleteGamePlatformOwnershipPeriod: (gameId, periodId) => apiFetch('DELETE', `/api/games/${gameId}/platforms/ownership-periods/${periodId}`),
 
     // Genres

@@ -283,6 +283,17 @@ async function deleteFamily(id) {
 }
 
 // --- CRUD : Console ---
+// Libellés + options du type d'acquisition (achat/prêt/location), partagés
+// entre les périodes de possession console et jeu.
+const ACQUISITION_TYPE_LABELS = { achat: '💳 Achat', pret: '🤝 Prêt', location: '📆 Location' };
+function acquisitionTypeOptionsHtml(selected) {
+    const blank = `<option value="" ${!selected ? 'selected' : ''}>— Non précisé —</option>`;
+    const opts = Object.entries(ACQUISITION_TYPE_LABELS)
+        .map(([val, label]) => `<option value="${val}" ${selected === val ? 'selected' : ''}>${label}</option>`)
+        .join('');
+    return blank + opts;
+}
+
 async function editConsole(id) {
     const c = consolesCache[id];
     if (!c) return;
@@ -294,6 +305,7 @@ async function editConsole(id) {
         const detailsParts = [];
         if (p.model) detailsParts.push(`📦 ${escapeHtml(p.model)}`);
         if (p.serial_number) detailsParts.push(`🔢 ${escapeHtml(p.serial_number)}`);
+        if (p.acquisition_type && ACQUISITION_TYPE_LABELS[p.acquisition_type]) detailsParts.push(ACQUISITION_TYPE_LABELS[p.acquisition_type]);
         const detailsHtml = detailsParts.length
             ? `<div class="text-slate-500 text-[10px] mt-0.5">${detailsParts.join(' · ')}</div>`
             : '';
@@ -328,6 +340,12 @@ async function editConsole(id) {
                     <label class="text-[10px] text-slate-500">Cédée le (optionnel)</label>
                     <input type="date" id="new-period-console-end" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
                 </div>
+                <div class="flex-1">
+                    <label class="text-[10px] text-slate-500">Type d'acquisition</label>
+                    <select id="new-period-console-acquisition" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs">
+                        ${acquisitionTypeOptionsHtml(null)}
+                    </select>
+                </div>
             </div>
             <div class="flex gap-2 items-end">
                 <div class="flex-1">
@@ -356,8 +374,11 @@ async function addConsoleOwnershipPeriod(consoleId) {
     const end = document.getElementById('new-period-console-end').value || null;
     const model = document.getElementById('new-period-console-model').value.trim() || null;
     const serial = document.getElementById('new-period-console-serial').value.trim() || null;
+    const acquisitionType = document.getElementById('new-period-console-acquisition').value || null;
     if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
-    await api.addConsoleOwnershipPeriod(consoleId, start, end, model, serial);
+    await api.addConsoleOwnershipPeriod(consoleId, {
+        date_start: start, date_end: end, model, serial_number: serial, acquisition_type: acquisitionType
+    });
     // render() doit être attendu avant de rouvrir la modale : sinon la
     // reconstruction du DOM en arrière-plan peut interférer avec l'appel
     // à openModal() fait par editConsole() (même défaut déjà corrigé pour
@@ -475,7 +496,27 @@ async function editGame(platformInstanceId) {
     const linkedConsoleIds = new Set(platforms.map(p => p.console_id));
     const availableConsoles = consoles.filter(c => !linkedConsoleIds.has(c.id));
 
-    const platformsHtml = platforms.map(p => `
+    // Périodes de possession chargées en parallèle pour chaque instance —
+    // peu de plateformes par jeu en pratique, un appel par instance reste léger.
+    const periodsByInstance = {};
+    await Promise.all(platforms.map(async (p) => {
+        periodsByInstance[p.id] = await api.getGamePlatformOwnershipPeriods(gameId, p.id);
+    }));
+
+    const platformsHtml = platforms.map(p => {
+        const periods = periodsByInstance[p.id] || [];
+        const periodsHtml = periods.map(period => {
+            const acqLabel = period.acquisition_type && ACQUISITION_TYPE_LABELS[period.acquisition_type]
+                ? ` · ${ACQUISITION_TYPE_LABELS[period.acquisition_type]}` : '';
+            return `
+                <div class="flex items-center justify-between bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]">
+                    <span class="text-slate-300">${period.date_start || '?'} → ${period.date_end || 'en cours'}${acqLabel}</span>
+                    <button onclick="deleteGamePlatformOwnershipPeriod(${gameId}, ${period.id}, ${p.id})" class="text-rose-400 hover:text-rose-300">🗑️</button>
+                </div>
+            `;
+        }).join('');
+
+        return `
         <div class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 space-y-1.5">
             <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-slate-200">🕹️ ${escapeHtml(p.console_name)}</span>
@@ -501,8 +542,24 @@ async function editGame(platformInstanceId) {
                 </div>
             </div>
             <button onclick="savePlatformInstance(${gameId}, ${p.id})" class="w-full bg-indigo-600/80 hover:bg-indigo-500 text-white py-1 rounded text-xs">💾 Enregistrer cette plateforme</button>
+
+            <div class="border-t border-slate-700 pt-1.5 space-y-1">
+                <label class="text-[10px] text-slate-500 block">📅 Dates de possession (achat, prêt, location...)</label>
+                <div class="space-y-1">${periodsHtml || '<p class="text-slate-600 text-[10px] italic">Aucune période enregistrée.</p>'}</div>
+                <div class="grid grid-cols-2 gap-1.5">
+                    <input type="date" id="new-period-platform-start-${p.id}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]" title="Acquis le">
+                    <input type="date" id="new-period-platform-end-${p.id}" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]" title="Cédé le (optionnel)">
+                </div>
+                <div class="flex gap-1.5">
+                    <select id="new-period-platform-acquisition-${p.id}" class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px]">
+                        ${acquisitionTypeOptionsHtml(null)}
+                    </select>
+                    <button onclick="addGamePlatformOwnershipPeriodInline(${gameId}, ${p.id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded text-[10px] whitespace-nowrap">+ Ajouter</button>
+                </div>
+            </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 
     const addPlatformHtml = availableConsoles.length > 0 ? `
         <div class="flex gap-2 items-end mt-2">
@@ -651,9 +708,25 @@ async function addGamePlatformInline(gameId) {
 async function removeGamePlatform(gameId, platformInstanceId) {
     if (!confirm('Retirer cette plateforme du jeu ? Les heures/statut associés à cette plateforme seront perdus.')) return;
     await api.removeGamePlatform(gameId, platformInstanceId);
-    render();
+    await render();
     // La modale ne peut plus être adressée par l'instance retirée : on la ferme.
     closeModal();
+}
+async function addGamePlatformOwnershipPeriodInline(gameId, platformInstanceId) {
+    const start = document.getElementById(`new-period-platform-start-${platformInstanceId}`).value;
+    const end = document.getElementById(`new-period-platform-end-${platformInstanceId}`).value || null;
+    const acquisitionType = document.getElementById(`new-period-platform-acquisition-${platformInstanceId}`).value || null;
+    if (!start) { alert("Renseigne au moins une date d'acquisition."); return; }
+    await api.addGamePlatformOwnershipPeriod(gameId, platformInstanceId, {
+        date_start: start, date_end: end, acquisition_type: acquisitionType
+    });
+    await render();
+    editGame(platformInstanceId);
+}
+async function deleteGamePlatformOwnershipPeriod(gameId, periodId, platformInstanceId) {
+    await api.deleteGamePlatformOwnershipPeriod(gameId, periodId);
+    await render();
+    editGame(platformInstanceId);
 }
 
 // --- Petit effet WOUAHHH : célébration à la complétion d'un jeu ---

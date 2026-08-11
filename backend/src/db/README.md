@@ -37,6 +37,8 @@ Une base encore au format "1 jeu = 1 console" (héritage V1) est migrée automat
 
 `console_ownership_periods` porte aussi `model` et `serial_number` (nullable, optionnels) — utiles quand la même console a été revendue puis rachetée dans une variante différente (ex: PS5 standard puis PS5 Slim). Ajoutés par `scripts/init-db.js` via `ALTER TABLE ADD COLUMN` idempotent sur les bases créées avant leur introduction.
 
+Les deux tables de périodes de possession (`console_ownership_periods` et `game_platform_ownership_periods`) portent aussi `acquisition_type` (nullable, valeurs libres côté application : `achat`, `pret`, `location`) — précise comment le jeu ou la console a été obtenu(e) sur cette période. Pas de contrainte `CHECK` en base pour rester tolérant si de nouvelles valeurs sont introduites côté UI sans migration de schéma.
+
 ## Troubleshooting
 
 - **`FOREIGN KEY constraint failed`** : vérifier que l'entité parente (console, jeu, genre) existe bien avant l'insertion — les contraintes FK sont actives (`PRAGMA foreign_keys = ON`).

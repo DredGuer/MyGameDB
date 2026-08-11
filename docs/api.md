@@ -23,8 +23,8 @@ Toute requête mutante (POST/PUT/DELETE) peut porter un header `X-Client-Id` (UU
 | POST | `/api/consoles` | `{ name, family_id }` | Création |
 | PUT | `/api/consoles/:id` | `{ name, family_id }` | Modification |
 | DELETE | `/api/consoles/:id` | — | Suppression (cascade jeux) |
-| GET | `/api/consoles/:id/ownership-periods` | — | Périodes de possession (avec `model`, `serial_number`) |
-| POST | `/api/consoles/:id/ownership-periods` | `{ date_start, date_end, model?, serial_number? }` | Ajout d'une période — modèle et numéro de série optionnels, utiles si la même console a été rachetée dans une variante différente |
+| GET | `/api/consoles/:id/ownership-periods` | — | Périodes de possession (avec `model`, `serial_number`, `acquisition_type`) |
+| POST | `/api/consoles/:id/ownership-periods` | `{ date_start, date_end, model?, serial_number?, acquisition_type? }` | Ajout d'une période — modèle, numéro de série et type d'acquisition (`achat`\|`pret`\|`location`) optionnels |
 | GET | `/api/consoles/ownership-periods/all` | — | Toutes les consoles avec leurs périodes, groupées par famille (anti N+1, sert la modale "Mon matériel") |
 | DELETE | `/api/consoles/ownership-periods/:periodId` | — | Suppression d'une période |
 
@@ -51,7 +51,7 @@ possession** séparées — voir § Plateformes d'un jeu ci-dessous. C'est ce qu
 | POST | `/api/games/:gameId/platforms` | `{ console_id, hours, completed, platform_type }` | Ajoute une plateforme à un jeu existant (409 si déjà rattaché à cette plateforme) |
 | PUT | `/api/games/:gameId/platforms/:platformInstanceId` | `{ hours, completed, platform_type, date_completed }` | Modifie une instance (heures, statut, support, date de complétion) |
 | DELETE | `/api/games/:gameId/platforms/:platformInstanceId` | — | Retire cette plateforme du jeu (cascade périodes de possession de l'instance) |
-| GET/POST | `/api/games/:gameId/platforms/:platformInstanceId/ownership-periods` | `{ date_start, date_end }` | Périodes de possession de cette instance |
+| GET/POST | `/api/games/:gameId/platforms/:platformInstanceId/ownership-periods` | `{ date_start, date_end, acquisition_type? }` | Périodes de possession de cette instance — type d'acquisition (`achat`\|`pret`\|`location`) optionnel |
 | DELETE | `/api/games/:gameId/platforms/ownership-periods/:periodId` | — | Suppression d'une période |
 
 ## Genres

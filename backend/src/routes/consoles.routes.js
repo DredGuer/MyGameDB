@@ -53,7 +53,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 router.get('/ownership-periods/all', asyncHandler(async (req, res) => {
     const rows = db.prepare(`
         SELECT c.id as console_id, c.name as console_name, f.name as family_name,
-               p.id, p.date_start, p.date_end, p.model, p.serial_number
+               p.id, p.date_start, p.date_end, p.model, p.serial_number, p.acquisition_type
         FROM consoles c
         JOIN families f ON f.id = c.family_id
         LEFT JOIN console_ownership_periods p ON p.console_id = c.id
@@ -68,7 +68,7 @@ router.get('/ownership-periods/all', asyncHandler(async (req, res) => {
         if (r.id) {
             byConsole[r.console_id].periods.push({
                 id: r.id, date_start: r.date_start, date_end: r.date_end,
-                model: r.model, serial_number: r.serial_number
+                model: r.model, serial_number: r.serial_number, acquisition_type: r.acquisition_type
             });
         }
     });
@@ -78,24 +78,25 @@ router.get('/ownership-periods/all', asyncHandler(async (req, res) => {
 
 router.get('/:id/ownership-periods', asyncHandler(async (req, res) => {
     const periods = db.prepare(
-        'SELECT id, date_start, date_end, model, serial_number FROM console_ownership_periods WHERE console_id = ? ORDER BY date_start ASC'
+        'SELECT id, date_start, date_end, model, serial_number, acquisition_type FROM console_ownership_periods WHERE console_id = ? ORDER BY date_start ASC'
     ).all(req.params.id);
     res.json({ data: periods });
 }));
 
 router.post('/:id/ownership-periods', asyncHandler(async (req, res) => {
-    const { date_start, date_end, model, serial_number } = req.body;
+    const { date_start, date_end, model, serial_number, acquisition_type } = req.body;
     if (!date_start) throw new ApiError(400, 'VALIDATION_ERROR', "La date d'acquisition est requise.");
 
     const info = db.prepare(
-        'INSERT INTO console_ownership_periods (console_id, date_start, date_end, model, serial_number) VALUES (?, ?, ?, ?, ?)'
-    ).run(req.params.id, date_start, date_end || null, (model || '').trim() || null, (serial_number || '').trim() || null);
+        'INSERT INTO console_ownership_periods (console_id, date_start, date_end, model, serial_number, acquisition_type) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(req.params.id, date_start, date_end || null, (model || '').trim() || null, (serial_number || '').trim() || null, acquisition_type || null);
 
     hub.broadcast('console:updated', { id: Number(req.params.id) }, req.clientId);
     res.status(201).json({
         data: {
             id: info.lastInsertRowid, date_start, date_end: date_end || null,
-            model: (model || '').trim() || null, serial_number: (serial_number || '').trim() || null
+            model: (model || '').trim() || null, serial_number: (serial_number || '').trim() || null,
+            acquisition_type: acquisition_type || null
         }
     });
 }));

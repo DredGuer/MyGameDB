@@ -79,21 +79,21 @@ router.delete('/:platformInstanceId', asyncHandler(async (req, res) => {
 
 router.get('/:platformInstanceId/ownership-periods', asyncHandler(async (req, res) => {
     const periods = db.prepare(
-        'SELECT id, date_start, date_end FROM game_platform_ownership_periods WHERE game_platform_id = ? ORDER BY date_start ASC'
+        'SELECT id, date_start, date_end, acquisition_type FROM game_platform_ownership_periods WHERE game_platform_id = ? ORDER BY date_start ASC'
     ).all(req.params.platformInstanceId);
     res.json({ data: periods });
 }));
 
 router.post('/:platformInstanceId/ownership-periods', asyncHandler(async (req, res) => {
-    const { date_start, date_end } = req.body;
+    const { date_start, date_end, acquisition_type } = req.body;
     if (!date_start) throw new ApiError(400, 'VALIDATION_ERROR', "La date d'acquisition est requise.");
 
     const info = db.prepare(
-        'INSERT INTO game_platform_ownership_periods (game_platform_id, date_start, date_end) VALUES (?, ?, ?)'
-    ).run(req.params.platformInstanceId, date_start, date_end || null);
+        'INSERT INTO game_platform_ownership_periods (game_platform_id, date_start, date_end, acquisition_type) VALUES (?, ?, ?, ?)'
+    ).run(req.params.platformInstanceId, date_start, date_end || null, acquisition_type || null);
 
     hub.broadcast('game:platform-changed', { gameId: Number(req.params.gameId), platformInstanceId: Number(req.params.platformInstanceId) }, req.clientId);
-    res.status(201).json({ data: { id: info.lastInsertRowid, date_start, date_end: date_end || null } });
+    res.status(201).json({ data: { id: info.lastInsertRowid, date_start, date_end: date_end || null, acquisition_type: acquisition_type || null } });
 }));
 
 router.delete('/ownership-periods/:periodId', asyncHandler(async (req, res) => {

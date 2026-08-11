@@ -91,11 +91,15 @@ CREATE TABLE IF NOT EXISTS game_genres (
 -- scripts/migrate-to-multi-platform.js pour la migration des données
 -- existantes, qui renomme l'ancienne table en game_ownership_periods_deprecated
 -- plutôt que de la supprimer).
+-- acquisition_type : 'achat' | 'pret' | 'location', optionnel (NULL = non
+-- précisé). Pas de contrainte CHECK pour rester tolérant si de nouvelles
+-- valeurs sont ajoutées côté UI sans migration de schéma.
 CREATE TABLE IF NOT EXISTS game_platform_ownership_periods (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     game_platform_id INTEGER NOT NULL,
     date_start TEXT,
     date_end TEXT,
+    acquisition_type TEXT,
     FOREIGN KEY (game_platform_id) REFERENCES game_platforms(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gpop_game_platform ON game_platform_ownership_periods(game_platform_id);
@@ -107,6 +111,7 @@ CREATE TABLE IF NOT EXISTS console_ownership_periods (
     date_end TEXT,
     model TEXT,
     serial_number TEXT,
+    acquisition_type TEXT,
     FOREIGN KEY (console_id) REFERENCES consoles(id) ON DELETE CASCADE
 );
 
